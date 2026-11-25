@@ -1,0 +1,154 @@
+#!/usr/bin/env node
+/* Build & verify KapiPasta - C# course content.
+   Reads content/pl/*.js (full Polish course) and content/en/*.js (English overrides keyed by lesson id),
+   RUNS every example, quiz, fill-in, bug and solution with the same interpreter the browser uses (KapiSharp / KapiWPF),
+   and writes js/data/course.js.
+   Usage:  node tools/build.js          # verify + build
+           node tools/build.js --check  # verify only (exit 1 on problems)                                   */
+const fs = require('fs'), path = require('path'), vm = require('vm');
+const ROOT = path.join(__dirname, '..');
+const CS = require('./cs.js'); const WPF = CS.WPF;
+const CHECK = process.argv.includes('--check');
+const problems = []; let lang = 'pl';
+const P = (w, m) => problems.push(`[${lang}] ${w}: ${m}`);
+const norm = s => String(s || '').replace(/\r/g, '').split('\n').map(l => l.replace(/\s+$/, '')).join('\n').replace(/\n+$/, '');
+const clone = o => JSON.parse(JSON.stringify(o));
+
+function load(dir, sandbox) {
+  const files = fs.readdirSync(path.join(ROOT, 'content', dir)).filter(f => f.endsWith('.js')).sort();
+  for (const f of files) { const p = path.join(ROOT, 'content', dir, f); vm.runInNewContext(fs.readFileSync(p, 'utf8'), Object.assign(sandbox, { c: String.raw, console }), { filename: p }); }
+  return sandbox;
+}
+const run = (code, inp = '', files = {}) => CS.run(code, { stdin: inp, files: Object.assign({}, files), maxSteps: 3000000 });
+function fmtErr(r, file = 'Program.cs') {
+  if (r.kind === 'compile') return `${file}(${r.line},${r.col}): error ${r.etype}: ${r.msg}`;
+  if (r.kind === 'runtime') return `${r.err}${r.line ? `\n   at Program.Main() in ${file}:line ${r.line}` : ''}`;
+  if (r.kind === 'timeout') return 'Timeout';
+  return r.err;
+}
+const DEFAULT_CS = `using System.Windows;\npublic partial class MainWindow : Window\n{\n    public MainWindow()\n    {\n        InitializeComponent();\n    }\n}`;
+function wpfStart(files, opts = {}) {
+  let err = null; const app = new WPF.App(Object.assign({ files, onError: e => { err = e; } }, opts));
+  try { app.start(); } catch (e) { err = e; }
+  return { app, err };
+}
+function wpfErr(e) {
+  if (e instanceof WPF.XamlError) return { kind: 'xaml', line: e.line, code: e.code, msg: e.message, file: e.file || 'MainWindow.xaml', text: `${e.file || 'MainWindow.xaml'}(${e.line},${e.col}): ${e.code === 'XML' ? 'XmlException' : 'error ' + e.code}: ${e.message}` };
+  if (e instanceof CS.CsError) return { kind: 'compile', line: e.line, code: e.code, msg: e.message, text: `MainWindow.xaml.cs(${e.line},${e.col}): error ${e.code}: ${e.message}` };
+  if (e instanceof CS.CsThrow) return { kind: 'runtime', line: e.line, code: e.ex.cls.name, msg: e.ex.f.Message, text: `Unhandled exception. System.${e.ex.cls.name}: ${e.ex.f.Message}` };
+  return { kind: 'internal', line: 0, code: 'Internal', msg: String(e && e.stack || e), text: String(e) };
+}
+function wpfCheck(t, files) {
+  const { app, err } = wpfStart(files, { autoAnswer: t.answers });
+  if (err) return 'start error: ' + wpfErr(err).text;
+  try { const ui = app.ui(); const msg = new Function('ui', 'app', t.ui)(ui, app); if (app.error) return 'runtime: ' + wpfErr(app.error).text; return msg || ''; } catch (e) { return 'check threw: ' + e.message; }
+}
+function runChecks(t, code) {
+  const tests = t.tests && t.tests.length ? t.tests : [{ i: '', o: null }];
+  for (const tc of tests) {
+    const r = run(code, tc.i, t.files);
+    if (r.err) return `error: ${fmtErr(r)}`;
+    if (t.check) { const m = new Function('src', 'out', 'files', 'input', t.check)(code, r.out, r.files || {}, tc.i); if (m) return 'check: ' + m; }
+    if (tc.o !== null && tc.o !== undefined && norm(r.out) !== norm(tc.o)) return `output ${JSON.stringify(norm(r.out))} != ${JSON.stringify(norm(tc.o))}`;
+  }
+  return '';
+}
+let ntask = 0;
+function verify(CH) {
+  const ids = new Set();
+  for (const ch of CH) for (const L of ch.lessons) {
+    if (ids.has(L.id)) P(L.id, 'duplicate lesson id'); ids.add(L.id);
+    L.ex.forEach((ex, i) => {
+      const w = `${L.id} ex${i}`;
+      if (!ex.scene) P(w, 'missing scene');
+      if (ex.wpf) { const { err } = wpfStart(ex.wpf); if (err) P(w, 'wpf example error ' + wpfErr(err).text); return; }
+      const r = run(ex.code, ex.inp || '', ex.files);
+      if (r.err && !(ex.scene && ex.scene.s === 'err' && !ex.scene.caught) && !ex.allowErr) P(w, 'example error ' + fmtErr(r));
+      ex.out = norm(r.out);
+      if (r.err) { ex.err = r.kind === 'compile' ? `error ${r.etype}: ${r.msg}` : r.err; }
+    });
+    L.tasks.forEach((t, j) => {
+      ntask++;
+      const w = `${L.id} t${j} (${t.t})`;
+      t.id = `${L.id}-${j}`;
+      if (![1, 2, 3].includes(t.l)) P(w, 'bad level');
+      if (!t.q) P(w, 'missing q');
+      const xaml = t.lang === 'xaml';
+      switch (t.t) {
+        case 'quiz': {
+          if (!(t.a >= 0 && t.a < t.opts.length)) P(w, 'bad answer index');
+          if (new Set(t.opts).size !== t.opts.length) P(w, 'duplicate opts');
+          if (t.out) { const r = run(t.code, t.inp || ''); if (r.err) P(w, 'quiz code error ' + fmtErr(r)); const o = norm(r.out); if (o !== norm(t.opts[t.a])) P(w, `answer mismatch: got ${JSON.stringify(o)} vs ${JSON.stringify(t.opts[t.a])}`); t.opts.forEach((op, k) => { if (k !== t.a && norm(op) === o) P(w, 'another option also correct'); }); }
+          if (t.err) { const r = xaml ? null : run(t.code, t.inp || ''); const et = xaml ? wpfErr(wpfStart({ 'MainWindow.xaml': t.code, 'MainWindow.xaml.cs': t.cs || DEFAULT_CS }).err || {}).code : r.etype; if (et !== t.opts[t.a]) P(w, `error type mismatch: got ${et} vs ${t.opts[t.a]}`); }
+          if (t.compiles !== undefined) { const r = run(t.code); const ok = r.kind !== 'compile'; if (ok !== t.compiles) P(w, `compiles=${ok} expected ${t.compiles} ${r.err || ''}`); }
+          break;
+        }
+        case 'fill': {
+          if ((t.code.match(/___/g) || []).length !== t.ans.length) P(w, 'blank count mismatch');
+          let k = 0; const full = t.code.replace(/___/g, () => t.ans[k++][0]);
+          if (t.run === false) break;
+          if (xaml) { const { err } = wpfStart({ 'MainWindow.xaml': full, 'MainWindow.xaml.cs': t.cs || DEFAULT_CS }); if (err) P(w, 'filled xaml error ' + wpfErr(err).text); break; }
+          const r = run(full, t.inp || ''); if (r.err) P(w, 'filled code error ' + fmtErr(r));
+          if (t.expect !== undefined && norm(r.out) !== norm(t.expect)) P(w, `filled output ${JSON.stringify(norm(r.out))} != ${JSON.stringify(t.expect)}`);
+          break;
+        }
+        case 'bug': {
+          const lines = t.code.split('\n'); if (t.line < 0 || t.line >= lines.length) { P(w, 'bad line'); break; }
+          if (xaml) {
+            const files = { 'MainWindow.xaml': t.code, 'MainWindow.xaml.cs': t.cs || DEFAULT_CS };
+            const { err } = wpfStart(files); if (!err) { P(w, 'xaml bug does not error'); break; }
+            const e = wpfErr(err); if (e.line !== t.line + 1 && !t.cause) P(w, `xaml error on line ${e.line}, expected ${t.line + 1}: ${e.text}`);
+            t.err = e.text; t.ekind = 'xaml';
+            if (t.fixcheck === false) break;
+            const fixed = lines.slice(); fixed[t.line] = lines[t.line].replace(/^(\s*).*$/, '$1') + t.fix.trim(); const r2 = wpfStart({ 'MainWindow.xaml': fixed.join('\n'), 'MainWindow.xaml.cs': t.cs || DEFAULT_CS }); if (r2.err) P(w, 'fix does not work: ' + wpfErr(r2.err).text);
+            break;
+          }
+          const r = run(t.code, t.inp || '');
+          if (t.noerr) { if (r.err) P(w, 'logic bug program errors: ' + fmtErr(r)); t.got = norm(r.out); delete t.err; }
+          else { if (!r.err) { P(w, 'bug program does not error'); break; } if (r.line !== t.line + 1 && !t.cause) P(w, `error on line ${r.line}, expected ${t.line + 1}: ${fmtErr(r)}`); t.err = fmtErr(r); t.ekind = r.kind; }
+          if (t.fixcheck === false) break;
+          const fixed = lines.slice(); fixed[t.line] = lines[t.line].replace(/^(\s*).*$/, '$1') + t.fix.trim();
+          const r2 = run(fixed.join('\n'), t.inp || ''); if (r2.err) P(w, 'fix does not work: ' + fmtErr(r2));
+          if (t.noerr && t.expect !== undefined && norm(r2.out) !== norm(t.expect)) P(w, `fixed output ${JSON.stringify(norm(r2.out))} != ${JSON.stringify(t.expect)}`);
+          break;
+        }
+        case 'code': {
+          if (t.wpf) { const m = wpfCheck(t, t.sol); if (m) P(w, 'solution fails: ' + m); if (!wpfCheck(t, t.start)) P(w, 'start code already passes'); break; }
+          const m = runChecks(t, t.sol); if (m) P(w, 'solution fails: ' + m);
+          if (!runChecks(t, t.start)) P(w, 'start code already passes');
+          break;
+        }
+        default: P(w, 'unknown type ' + t.t);
+      }
+    });
+  }
+}
+function merge(base, tr) {
+  const out = clone(base);
+  for (const ch of out) {
+    const tc = tr.ch[ch.id]; if (!tc) P(ch.id, 'missing chapter translation'); else for (const k in tc) ch[k] = tc[k];
+    for (const L of ch.lessons) {
+      const tl = tr.les[L.id]; if (!tl) { P(L.id, 'missing lesson translation'); continue; }
+      for (const k of ['title', 'theory', 'more']) if (tl[k] !== undefined) L[k] = tl[k];
+      if (tl.ex) { if (tl.ex.length !== L.ex.length) P(L.id, `ex count ${tl.ex.length} != ${L.ex.length}`); tl.ex.forEach((e, i) => { if (!L.ex[i]) return; const { cap, scene, ...rest } = e; Object.assign(L.ex[i], rest); if (scene) L.ex[i].scene = Object.assign({}, L.ex[i].scene, scene); if (cap !== undefined) L.ex[i].scene.cap = cap; }); }
+      if (tl.tasks) { if (tl.tasks.length !== L.tasks.length) P(L.id, `task count ${tl.tasks.length} != ${L.tasks.length}`); tl.tasks.forEach((t, i) => { if (L.tasks[i]) Object.assign(L.tasks[i], t); }); }
+      else if (L.tasks.length) P(L.id, 'missing task translations');
+    }
+  }
+  return out;
+}
+const PL = load('pl', { CH: [] }).CH;
+lang = 'pl'; verify(PL);
+const hasEN = fs.readdirSync(path.join(ROOT, 'content', 'en')).some(f => f.endsWith('.js'));
+let EN = [];
+if (hasEN && !process.argv.includes('--pl')) { const TRS = load('en', { TR: { ch: {}, les: {} } }).TR; lang = 'en'; EN = merge(PL, TRS); verify(EN); }
+else console.log('(EN skipped)');
+// strip build-only fields
+for (const C of [PL, EN]) for (const ch of C) for (const L of ch.lessons) for (const t of L.tasks) { if (t.t === 'code' && !t.wpf) { } }
+console.log(`chapters: ${PL.length}, lessons: ${PL.reduce((a, c) => a + c.lessons.length, 0)}, tasks: ${PL.reduce((a, c) => a + c.lessons.reduce((b, L) => b + L.tasks.length, 0), 0)} (checked ${ntask} incl. EN)`);
+if (problems.length) { console.log(`\n${problems.length} problem(s):`); problems.forEach(p => console.log(' - ' + p)); process.exit(1); }
+if (!CHECK) {
+  const js = '// GENERATED by tools/build.js – do not edit by hand. Edit content/*/ and run: node tools/build.js\nwindow.COURSE = ' + JSON.stringify({ pl: PL, en: EN }) + ';\n';
+  fs.writeFileSync(path.join(ROOT, 'js', 'data', 'course.js'), js);
+  console.log('written js/data/course.js', Math.round(js.length / 1024) + ' KB');
+} else console.log('OK');
