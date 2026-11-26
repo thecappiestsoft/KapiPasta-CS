@@ -67,7 +67,7 @@ body{--ok:#3fa45b;--bad:#e5534b;--warn:#e0a52b;--r:8px}
 .tree .open>div .tw{transform:rotate(90deg)}
 .tree .nm{flex:1;overflow:hidden;text-overflow:ellipsis}
 .tree .pct{font-size:11px;color:var(--muted)}
-.tree .stars{font-size:10px;letter-spacing:-1px}
+.tree .stars{font-size:12px;letter-spacing:0;color:#f5b301;white-space:nowrap;flex-shrink:0;cursor:help}.tree .stars i{font-style:normal;color:var(--muted);opacity:.8}.tree .stars.max{text-shadow:0 0 6px rgba(245,179,1,.55)}
 .tree ul{list-style:none;margin:0;padding:0 0 0 16px}
 .tree .lock{opacity:.5}
 .fi{display:inline-grid;place-items:center;font-size:9px;font-weight:800;border-radius:3px;padding:0 3px;height:15px;font-family:Inter,sans-serif;letter-spacing:-.3px}

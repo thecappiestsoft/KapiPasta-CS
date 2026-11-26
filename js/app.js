@@ -1,7 +1,7 @@
 /* ================= KapiPasta - C# ================= */
 const LS = 'cskapi-v1', LST = 'cskapi-teacher-v1';
 const DEF = { onboarded: false, name: '', cls: '', stage: 1, theme: 'pirate', ide: 'vs', mode: null, lang: 'pl', sound: true, unlockAll: false,
-  xp: 0, done: {}, stars: {}, badges: {}, streak: { last: '', n: 0 }, today: { d: '', xp: 0 }, combo: 0, bestCombo: 0, codeRuns: 0, sbRuns: 0, drafts: {}, proofs: {}, created: 0, lastSeen: 0 };
+  xp: 0, done: {}, stars: {}, badges: {}, streak: { last: '', n: 0 }, today: { d: '', xp: 0 }, combo: 0, bestCombo: 0, codeRuns: 0, sbRuns: 0, drafts: {}, proofs: {}, time: {}, away: {}, created: 0, lastSeen: 0 };
 function lsGet(k) { try { return JSON.parse(localStorage.getItem(k)); } catch (e) { return null; } }
 function lsSet(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); } catch (e) { } }
 let S = Object.assign({}, DEF, lsGet(LS) || {});
@@ -34,6 +34,37 @@ const chName = ch => ch.name[S.theme];
 const projName = (ci, ch) => `${String(ci + 1).padStart(2, '0')}.${slug(ch.name.neutral || ch.name[S.theme])}`;
 
 /* ===== progress math ===== */
+/* stars of a finished lesson: 3 = every task right at the first try, 2 = at least 60%, 1 = the rest */
+function starsFor(ts, done) { const first = ts.filter(t => done[t.id] && done[t.id].first).length; const r = ts.length ? first / ts.length : 1; return { first, n: ts.length, stars: r === 1 ? 3 : r >= .6 ? 2 : 1 }; }
+function lessonStars(L) { const ts = stageTasks(L); if (!ts.length || !ts.every(t => S.done[t.id] && S.done[t.id].ok)) return null; return starsFor(ts, S.done); }
+function starsHtml(st, big) { const h = `${'★'.repeat(st.stars)}<i>${'☆'.repeat(3 - st.stars)}</i>`; return big ? h : `<span class="stars ${st.stars === 3 ? 'max' : ''}" title="${esc(tr('starsTip', { f: st.first, n: st.n }))}">${h}</span>`; }
+/* time spent on tasks: counted while the task is on screen and the tab is visible; one stretch counts at most 10 min */
+const TT = { id: null, since: 0 };
+const TT_CAP = 10 * 60 * 1000;
+function timeTick(id) {
+  const now = Date.now();
+  if (TT.id && !(S.done[TT.id] && S.done[TT.id].ok)) { S.time = S.time || {}; S.time[TT.id] = (S.time[TT.id] || 0) + Math.min(now - TT.since, TT_CAP); }
+  TT.id = id && !(S.done[id] && S.done[id].ok) ? id : null; TT.since = now;
+}
+function taskSec(id) { const d = S.done[id]; if (d && d.sec !== undefined) return d.sec; return Math.round(((S.time || {})[id] || 0) / 1000); }
+function fmtDur(sec) { sec = Math.round(sec || 0); if (sec < 60) return sec + ' s'; const m = Math.floor(sec / 60); if (m < 60) return m + ' min' + (sec % 60 && m < 10 ? ' ' + (sec % 60) + ' s' : ''); return Math.floor(m / 60) + ' h ' + String(m % 60).padStart(2, '0') + ' min'; }
+/* leaving the app during a task (other tab, other window, minimised): counted per task and shown to the teacher */
+const AW = { id: null, since: 0 };
+function taskOnScreen() { const t = V.view === 'lesson' && V.phase === 'tasks' && typeof curTask === 'function' ? curTask() : null; return t && !(S.done[t.id] && S.done[t.id].ok) ? t : null; }
+function goneAway() {
+  if (AW.id) return; const t = taskOnScreen(); timeTick(null); if (!t) return;
+  AW.id = t.id; AW.since = Date.now(); S.away = S.away || {}; const a = S.away[t.id] || (S.away[t.id] = { n: 0, ms: 0 }); a.n++; save();
+}
+function cameBack() {
+  if (document.hidden || !document.hasFocus()) return;
+  if (AW.id) { const a = (S.away || {})[AW.id]; if (a) a.ms += Math.min(Date.now() - AW.since, 4 * 3600 * 1000); const t = taskOnScreen(); if (t && t.id === AW.id) toast('👀 ' + tr('awayNote', { n: a ? a.n : 1 }), 4000); AW.id = null; save(); }
+  const t = taskOnScreen(); timeTick(t ? t.id : null);
+}
+document.addEventListener('visibilitychange', () => { if (document.hidden) goneAway(); else cameBack(); });
+window.addEventListener('blur', () => setTimeout(() => { if (!document.hasFocus()) goneAway(); }, 150));
+window.addEventListener('focus', cameBack);
+function awayOf(id) { const a = (S.away || {})[id]; return a ? { n: a.n, sec: Math.round(a.ms / 1000) } : { n: 0, sec: 0 }; }
+window.addEventListener('pagehide', () => { timeTick(null); save(); });
 function lessonProg(L) { const ts = stageTasks(L); const d = ts.filter(t => S.done[t.id] && S.done[t.id].ok).length; return { d, n: ts.length }; }
 function chapProg(ch) { let d = 0, n = 0; ch.lessons.forEach(L => { const p = lessonProg(L); d += p.d; n += p.n; }); return { d, n, p: n ? d / n : 0 }; }
 function unlocked(ci) { if (ci === 0 || S.unlockAll) return true; return chapProg(course()[ci - 1]).p >= 0.5; }
@@ -108,10 +139,11 @@ function checkBadges() {
 function award(t, extra = {}) {
   const prev = S.done[t.id] || { tries: 0 };
   if (prev.ok) { return 0; }
+  timeTick(t.id); const sec = Math.round(((S.time || {})[t.id] || 0) / 1000);
   const first = (prev.tries || 0) === 0 && !prev.revealed;
   let xp = BASE[t.t] + (t.l - 1) * 5 + (first ? 5 : 0);
   if (prev.revealed || extra.self) xp = Math.round(xp / 2);
-  S.done[t.id] = { ok: 1, first: first ? 1 : 0, tries: (prev.tries || 0) + 1, ts: Date.now() };
+  S.done[t.id] = { ok: 1, first: first ? 1 : 0, tries: (prev.tries || 0) + 1, ts: Date.now(), sec };
   if (first) { S.combo++; S.bestCombo = Math.max(S.bestCombo, S.combo); } else S.combo = 0;
   addXP(xp);
   if (first && S.combo > 0 && S.combo % 5 === 0) { addXP(10); setTimeout(() => toast('🔥 ' + tr('combo', { n: S.combo, xp: 10 })), 500); }
@@ -314,8 +346,8 @@ function treeHtml() {
     h += `<li class="${open ? 'open' : ''} ${ul ? '' : 'lock'}"><div data-act="${ul ? 'fold' : 'locked'}" data-a="${ch.id}"><span class="tw">▶</span>${ul ? ch.icon[S.theme] : '🔒'} <span class="nm">${String(ci + 1).padStart(2, '0')}_${esc(chName(ch))}</span><span class="pct">${Math.round(p.p * 100)}%</span></div>`;
     if (open && ul) {
       h += '<ul>';
-      ch.lessons.forEach((L, li) => { const lp = lessonProg(L); const st = S.stars[L.id] || 0; const sel = V.view === 'lesson' && V.ci === ci && V.li === li;
-        h += `<li><div class="${sel ? 'sel' : ''}" data-act="lesson" data-a="${ci}:${li}">${fileIco('.cs')}<span class="nm">${fname(ci, li, L)}</span>${lp.d === lp.n && lp.n ? `<span class="stars">${'⭐'.repeat(st || 1)}</span>` : `<span class="pct">${lp.d}/${lp.n}</span>`}</div></li>`; });
+      ch.lessons.forEach((L, li) => { const lp = lessonProg(L); const st = lessonStars(L); const sel = V.view === 'lesson' && V.ci === ci && V.li === li;
+        h += `<li><div class="${sel ? 'sel' : ''}" data-act="lesson" data-a="${ci}:${li}">${fileIco('.cs')}<span class="nm">${fname(ci, li, L)}</span>${st ? starsHtml(st) : `<span class="pct">${lp.d}/${lp.n}</span>`}</div></li>`; });
       h += '</ul>';
     }
     h += '</li>';
@@ -422,7 +454,7 @@ function taskView(t, ts) {
   const done = S.done[t.id] && S.done[t.id].ok;
   const lang = t.lang || 'cs';
   const fn = lang === 'xaml' ? 'MainWindow.xaml' : 'Program.cs';
-  let h = `<div class="task"><div class="qh">${typeChip(t)}<span class="chip">${tr('q', { i: V.ti + 1, n: ts.length })}</span><span class="chip">${'●'.repeat(t.l)}${'○'.repeat(3 - t.l)}</span>${done ? '<span class="chip" style="color:var(--ok)">✔</span>' : ''}</div><div class="qt">${t.q}</div>`;
+  let h = `<div class="task"><div class="qh">${typeChip(t)}<span class="chip">${tr('q', { i: V.ti + 1, n: ts.length })}</span><span class="chip">${'●'.repeat(t.l)}${'○'.repeat(3 - t.l)}</span>${done ? `<span class="chip" style="color:var(--ok)">✔</span>${taskSec(t.id) ? `<span class="chip" title="${esc(tr('timeSpent'))}">⏱ ${fmtDur(taskSec(t.id))}</span>` : ''}` : ''}</div><div class="qt">${t.q}</div>`;
   if (t.t === 'quiz') {
     if (t.code) h += codeBlock(t.code, { title: fn, lang });
     if (t.inp) h += `<div class="muted" style="font-size:12px">⌨️ stdin: <code>${esc(t.inp.replace(/\n/g, ' ⏎ '))}</code></div>`;
@@ -475,17 +507,17 @@ function feedback(t, A) {
 }
 function keysBar(lang) { const k = lang === 'xaml' ? ['⇥', '<', '/>', '>', '"', '=', '{', '}', ':', '.'] : ['⇥', ';', '{', '}', '(', ')', '"', '[', ']', '=', '+', '<', '>', '.', '$', '\'']; return `<div class="keys">${k.map(x => `<button data-key="${esc(x)}">${esc(x)}</button>`).join('')}</div>`; }
 function doneView(L) {
-  const ts = stageTasks(L); const first = ts.filter(t => S.done[t.id] && S.done[t.id].first).length;
-  const r = ts.length ? first / ts.length : 1; const stars = r === 1 ? 3 : r >= .6 ? 2 : 1;
+  const ts = stageTasks(L); const st = starsFor(ts, S.done), first = st.first, stars = st.stars;
+  const secs = ts.reduce((a, t) => a + taskSec(t.id), 0);
   const C = course(); let nxt = null;
   if (V.li + 1 < C[V.ci].lessons.length) nxt = [V.ci, V.li + 1]; else if (V.ci + 1 < C.length && unlocked(V.ci + 1)) nxt = [V.ci + 1, 0];
   return `<div class="task" style="text-align:center">${capy({ size: 170, mood: 'wow' })}<h1>${tr('done')}</h1><div style="font-size:42px;letter-spacing:4px">${'⭐'.repeat(stars)}${'☆'.repeat(3 - stars)}</div>
-<p class="muted">${tr('accuracy')}: ${first}/${ts.length}</p><div class="row-btns" style="justify-content:center">${nxt ? `<button class="btn pri" data-act="lesson" data-a="${nxt[0]}:${nxt[1]}">${tr('nextLesson')}</button>` : ''}<button class="btn" data-act="go" data-a="welcome">${tr('backMap')}</button><button class="btn ghost" data-act="gotask" data-a="0">${tr('again')}</button></div></div>`;
+<p class="muted">${tr('accuracy')}: ${first}/${ts.length} · ⏱ ${tr('timeSpent')}: ${fmtDur(secs)}</p>${stars < 3 ? `<p class="muted" style="font-size:13px">${tr('starsHow')}</p>` : ''}<div class="row-btns" style="justify-content:center">${nxt ? `<button class="btn pri" data-act="lesson" data-a="${nxt[0]}:${nxt[1]}">${tr('nextLesson')}</button>` : ''}<button class="btn" data-act="go" data-a="welcome">${tr('backMap')}</button><button class="btn ghost" data-act="gotask" data-a="0">${tr('again')}</button></div></div>`;
 }
 function finishLesson() {
   const L = course()[V.ci].lessons[V.li], ts = stageTasks(L);
   if (ts.every(t => S.done[t.id] && S.done[t.id].ok)) {
-    const first = ts.filter(t => S.done[t.id].first).length; const r = ts.length ? first / ts.length : 1; const stars = r === 1 ? 3 : r >= .6 ? 2 : 1;
+    const stars = starsFor(ts, S.done).stars;
     S.stars[L.id] = Math.max(S.stars[L.id] || 0, stars); checkBadges(); save(); V.phase = 'done'; confetti(); beep('lvl'); kapiSay(pick(tr('correct')), 'wow');
   } else { V.ti = firstUndone(L); }
   renderMain(); scrollTop();
@@ -547,8 +579,8 @@ function profileView() {
   return `<div class="doc"><div class="crumb">// Badges.md</div><div class="banner">${capy({ size: 120 })}<div><h1>${esc(S.name)}</h1><div class="muted">${S.cls ? esc(S.cls) + ' · ' : ''}${tr('st' + S.stage)} · ${tr('level')} ${lv.lv} ${esc(lvTitle(lv.lv))}</div></div></div>
 <h2>📊 ${tr('stats')}</h2><div class="statgrid"><div class="stat"><div class="l">💎 XP</div><div class="v">${S.xp}</div></div><div class="stat"><div class="l">✅ ${tr('tasksDone')}</div><div class="v">${st.okCount}/${total}</div></div>
 <div class="stat"><div class="l">🎯 ${tr('accuracy')}</div><div class="v">${st.okCount ? Math.round(st.first / st.okCount * 100) : 0}%</div></div><div class="stat"><div class="l">🔥 ${tr('bestCombo')}</div><div class="v">${S.bestCombo}</div></div>
-<div class="stat"><div class="l">📅 ${tr('streak')}</div><div class="v">${S.streak.n}</div></div><div class="stat"><div class="l">▶ ${tr('codeRuns')}</div><div class="v">${S.codeRuns}</div></div></div>
-<h2>🏅 ${tr('badges')}</h2><div class="badges">${list.map(b => `<div class="badge ${b.ok ? '' : 'off'}"><div class="bi">${b.ico}</div><b>${esc(b.n)}</b><small>${esc(b.d)}</small></div>`).join('')}</div>
+<div class="stat"><div class="l">📅 ${tr('streak')}</div><div class="v">${S.streak.n}</div></div><div class="stat"><div class="l">👀 ${tr('awayCount')}</div><div class="v">${Object.values(S.away || {}).reduce((x, a) => x + a.n, 0)}</div></div><div class="stat"><div class="l">⏱ ${tr('timeSpent')}</div><div class="v">${fmtDur(Object.keys(S.done).filter(id => S.done[id].ok).reduce((x, id) => x + taskSec(id), 0))}</div></div><div class="stat"><div class="l">▶ ${tr('codeRuns')}</div><div class="v">${S.codeRuns}</div></div></div>
+<p class="muted" style="font-size:12px">ℹ️ ${tr('awayInfo')}</p><h2>🏅 ${tr('badges')}</h2><div class="badges">${list.map(b => `<div class="badge ${b.ok ? '' : 'off'}"><div class="bi">${b.ico}</div><b>${esc(b.n)}</b><small>${esc(b.d)}</small></div>`).join('')}</div>
 <div class="row-btns" style="margin-top:18px"><button class="btn pri" data-act="progress">💾 ${tr('progress')}</button></div></div>`;
 }
 
@@ -689,6 +721,7 @@ function insertAt(ed, s) { const a = ed.selectionStart, b = ed.selectionEnd; ed.
 function curTask() { if (V.view !== 'lesson') return null; return stageTasks(course()[V.ci].lessons[V.li])[V.ti]; }
 function scrollToTask() { const t = document.querySelector('.task'); if (t) t.scrollIntoView({ behavior: 'smooth', block: 'start' }); }
 function afterRender() {
+  { const t = V.view === 'lesson' && V.phase === 'tasks' && !document.hidden ? curTask() : null; const id = t ? t.id : null; if (id !== TT.id || !id) timeTick(id); }
   if (V.view === 'lesson' && V.phase === 'theory') {
     const L = course()[V.ci].lessons[V.li]; const exs = L.ex.filter(x => !x.lvl || x.lvl <= S.stage);
     exs.forEach((ex, i) => { const k = L.id + '-ex' + i; if (ex.wpf && V.ans[k]) startWpf(k, ex.wpf); });
@@ -779,7 +812,7 @@ const b64e = b => { let s = ''; for (let i = 0; i < b.length; i += 0x8000) s += 
 const b64d = s => { s = s.replace(/-/g, '+').replace(/_/g, '/'); while (s.length % 4) s += '='; const r = atob(s); const b = new Uint8Array(r.length); for (let i = 0; i < r.length; i++) b[i] = r.charCodeAt(i); return b; };
 async function zip(b, mode) { const st = mode === 'c' ? new CompressionStream('deflate-raw') : new DecompressionStream('deflate-raw'); return new Uint8Array(await new Response(new Blob([b]).stream().pipeThrough(st)).arrayBuffer()); }
 function payload() {
-  const done = {}; for (const id in S.done) { const d = S.done[id]; done[id] = [d.ok ? 1 : 0, d.first ? 1 : 0, d.tries || 0]; }
+  const done = {}; for (const id in S.done) { const d = S.done[id]; done[id] = [d.ok ? 1 : 0, d.first ? 1 : 0, d.tries || 0, d.ok ? taskSec(id) : Math.round(((S.time || {})[id] || 0) / 1000), awayOf(id).n, awayOf(id).sec]; }
   const proof = {}; for (const id in (S.proofs || {})) if (S.done[id] && S.done[id].ok) proof[id] = S.proofs[id];
   return { app: 'cskapi', v: 1, name: S.name, cls: S.cls, stage: S.stage, xp: S.xp, done, stars: S.stars, badges: Object.keys(S.badges), streak: S.streak.n, bestCombo: S.bestCombo, codeRuns: S.codeRuns, proof, created: S.created, ts: Date.now(), lang: S.lang, theme: S.theme, ide: S.ide };
 }
@@ -810,7 +843,7 @@ async function progressModal() {
   const fileTxt = `# KapiPasta - C# – ${S.lang === 'en' ? 'student progress (encoded file, do not edit)' : 'postęp ucznia (plik zakodowany, nie edytuj)'}\n# ${S.name}${S.cls ? ' / ' + S.cls : ''} · ${new Date().toLocaleString()}\n${code.match(/.{1,76}/g).join('\n')}\n`;
   window._PF = fileTxt;
   modal(`<div class="mh">💾 ${tr('progress')}<button class="btn sm ghost" data-act="close">✕</button></div><div class="mb">
-<h3>📤 ${tr('expTitle')}</h3><p class="muted">${tr('expDesc')}</p>
+<h3>📤 ${tr('expTitle')}</h3><p class="muted">${tr('expDesc')}</p><p class="muted" style="font-size:12px">ℹ️ ${tr('awayInfo')}</p>
 <div class="row-btns">${canSave() ? `<button class="btn pri" data-act="dl">${tr('dlFile')}</button>` : ''}<button class="btn" data-act="copy" data-src="pcode">${tr('copyCode')}</button></div>
 ${canSave() ? '' : `<p class="muted" style="font-size:12px">${tr('dlNo')}</p>`}<div class="codeout" id="pcode">${esc(code)}</div>
 <h3 style="margin-top:18px">📥 ${tr('impTitle')}</h3><p class="muted">${tr('impDesc')}</p>
@@ -830,9 +863,9 @@ function fallbackCopy(s) { const ta = document.createElement('textarea'); ta.val
 async function importStudentText(text) {
   let o; try { o = await decodeProgress(text); } catch (e) { toast('⚠️ ' + tr('badCode')); return; }
   confirmBox(tr('impQ', { name: esc(o.name), xp: o.xp }), () => {
-    const done = {}; for (const id in o.done) { const d = o.done[id]; done[id] = { ok: d[0], first: d[1], tries: d[2] }; }
+    const done = {}, time = {}, away = {}; for (const id in o.done) { const d = o.done[id]; done[id] = { ok: d[0], first: d[1], tries: d[2] }; if (d[3] !== undefined) { if (d[0]) done[id].sec = d[3]; time[id] = d[3] * 1000; } if (d[4]) away[id] = { n: d[4], ms: (d[5] || 0) * 1000 }; }
     Object.assign(S, { name: o.name, cls: o.cls || '', stage: normStage(o.stage), xp: o.xp, done, stars: o.stars || {}, bestCombo: o.bestCombo || 0, codeRuns: o.codeRuns || 0, onboarded: true });
-    S.proofs = o.proof || {}; S.badges = {}; (o.badges || []).forEach(b => S.badges[b] = Date.now()); S.streak = { last: todayStr(), n: o.streak || 1 };
+    S.proofs = o.proof || {}; S.time = time; S.away = away; S.badges = {}; (o.badges || []).forEach(b => S.badges[b] = Date.now()); S.streak = { last: todayStr(), n: o.streak || 1 };
     save(); render(); confetti(); toast('✔ ' + tr('impOk'));
   });
 }
