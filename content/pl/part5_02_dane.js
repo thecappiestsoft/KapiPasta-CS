@@ -36,7 +36,7 @@ Console.WriteLine(i);`, ['9', '10', '9.99', '0'], 'Rzutowanie (int) obcina czę�
   OUT(2, c`Console.WriteLine(Math.Round(2.5) + " " + Math.Round(3.5) + " " + Convert.ToInt32(2.5));`, ['2 4 2', '3 4 3', '3 4 2', '2 3 2'], 'Math.Round i Convert.ToInt32 domyślnie zaokrąglają „do parzystej” (zaokrąglenie bankierskie): 2.5 → 2, 3.5 → 4.', 'Math.Round and Convert.ToInt32 round “to even” by default (banker\'s rounding): 2.5 → 2, 3.5 → 4.'),
   ERR(3, c`string s = "12a";
 int n = int.Parse(s);
-Console.WriteLine(n);`, ['FormatException', 'OverflowException', 'InvalidCastException', 'CS0029'], 'int.Parse wymaga tekstu, który jest liczbą – "12a" kończy się FormatException. Bezpieczniej użyć int.TryParse.', 'int.Parse needs text that is a number – "12a" ends with FormatException. int.TryParse is safer.'),
+Console.WriteLine(n);`, ['FormatException', 'OverflowException', 'InvalidCastException', 'Wypisze 12'], 'int.Parse wymaga tekstu, który jest liczbą – "12a" kończy się FormatException. Bezpieczniej użyć int.TryParse.', 'int.Parse needs text that is a number – "12a" ends with FormatException. int.TryParse is safer.', { en: { opts: ['FormatException', 'OverflowException', 'InvalidCastException', 'It prints 12'] } }),
   ERR(3, c`string s = "3000000000";
 int n = int.Parse(s);
 Console.WriteLine(n);`, ['OverflowException', 'FormatException', 'Wypisze 3000000000', 'Wypisze -1294967296'], 'Tekst jest poprawną liczbą, ale nie mieści się w int (max 2 147 483 647) – OverflowException.', 'The text is a valid number but does not fit in an int (max 2,147,483,647) – OverflowException.', { en: { opts: ['OverflowException', 'FormatException', 'It prints 3000000000', 'It prints -1294967296'] } }),
