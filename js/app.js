@@ -38,9 +38,10 @@ const projName = (ci, ch) => `${String(ci + 1).padStart(2, '0')}.${slug(ch.name.
    ½★ = 1 (<30%), ★ = 2 (30%), ★½ = 3 (50%), ★★ = 4 (75%), ★★½ = 5 (90%), ★★★ = 6 (100%).
    The capybara in a mortarboard (perfect) = 100% and every task right at the first try. */
 const GRADE_MIN = [0, 0.3, 0.5, 0.75, 0.9, 1]; // lowest share of tasks for grades 1..6
+function gradeOf(r, mins = GRADE_MIN) { for (let g = 6; g >= 1; g--) if (r >= mins[g - 1] - 1e-9) return g; return 1; }
 function starsFor(ts, done) {
   const n = ts.length, d = ts.filter(t => done[t.id] && done[t.id].ok).length, first = ts.filter(t => done[t.id] && done[t.id].ok && done[t.id].first).length;
-  const r = n ? d / n : 1; let grade = 0; if (d) for (let g = 6; g >= 1; g--) if (r >= GRADE_MIN[g - 1] - 1e-9) { grade = g; break; }
+  const r = n ? d / n : 1; const grade = d ? gradeOf(r) : 0;
   return { d, n, first, grade, stars: grade / 2, perfect: n > 0 && d === n && first === n };
 }
 function lessonStars(L) { const ts = stageTasks(L); if (!ts.length) return null; const st = starsFor(ts, S.done); return st.d ? st : null; }
@@ -75,6 +76,9 @@ window.addEventListener('focus', cameBack);
 function awayOf(id) { const a = (S.away || {})[id]; return a ? { n: a.n, sec: Math.round(a.ms / 1000) } : { n: 0, sec: 0 }; }
 window.addEventListener('pagehide', () => { timeTick(null); save(); });
 function lessonProg(L) { const ts = stageTasks(L); const d = ts.filter(t => S.done[t.id] && S.done[t.id].ok).length; return { d, n: ts.length }; }
+/* chapter grade 1-6 (the main grade: 15 + 15 + 10 tasks per chapter, the stage decides how many count) */
+function chapStars(ch) { const ts = ch.lessons.flatMap(L => stageTasks(L)); const st = starsFor(ts, S.done); return st.d ? st : null; }
+function chapGradeHtml(ch, withNum) { const st = chapStars(ch); if (!st) return ''; return `<span class="stars ${st.grade === 6 ? 'max' : ''}" title="${esc(tr('chapGradeTip', { g: st.grade, d: st.d, n: st.n, p: Math.round(st.d / st.n * 100) }))}">${starRow(st.grade)}${withNum ? ` <b class="gnum">${st.grade}</b>` : ''}${st.perfect ? perfectIco() : ''}</span>`; }
 function chapProg(ch) { let d = 0, n = 0; ch.lessons.forEach(L => { const p = lessonProg(L); d += p.d; n += p.n; }); return { d, n, p: n ? d / n : 0 }; }
 function unlocked(ci) { if (ci === 0 || S.unlockAll) return true; return chapProg(course()[ci - 1]).p >= 0.5; }
 const LVT = k => 50 * k * (k + 1);
@@ -352,7 +356,7 @@ function treeHtml() {
   else h += `<li class="open"><div data-act="go" data-a="welcome"><span class="tw">▶</span><span class="nm"><b>KAPIPASTA</b></span></div><ul>`;
   C.forEach((ch, ci) => {
     const p = chapProg(ch), ul = unlocked(ci), open = V.open[ch.id];
-    h += `<li class="${open ? 'open' : ''} ${ul ? '' : 'lock'}"><div data-act="${ul ? 'fold' : 'locked'}" data-a="${ch.id}"><span class="tw">▶</span>${ul ? ch.icon[S.theme] : '🔒'} <span class="nm">${String(ci + 1).padStart(2, '0')}_${esc(chName(ch))}</span><span class="pct">${Math.round(p.p * 100)}%</span></div>`;
+    h += `<li class="${open ? 'open' : ''} ${ul ? '' : 'lock'}"><div data-act="${ul ? 'fold' : 'locked'}" data-a="${ch.id}"><span class="tw">▶</span>${ul ? ch.icon[S.theme] : '🔒'} <span class="nm">${String(ci + 1).padStart(2, '0')}_${esc(chName(ch))}</span>${chapStars(ch) ? chapGradeHtml(ch) : `<span class="pct">${Math.round(p.p * 100)}%</span>`}</div>`;
     if (open && ul) {
       h += '<ul>';
       ch.lessons.forEach((L, li) => { const lp = lessonProg(L); const st = lessonStars(L); const sel = V.view === 'lesson' && V.ci === ci && V.li === li;
@@ -412,7 +416,7 @@ ${next ? `<div class="row-btns"><button class="btn pri" data-act="lesson" data-a
  <button class="qk" data-act="go" data-a="teacher"><span class="e">🧑‍🏫</span><span><b>${tr('teacher')}</b><small>${tr('teacherD')}</small></span></button>
 </div>
 <div><h2>📁 ${W().ch}</h2><div class="projlist">${C.map((ch, ci) => { const p = chapProg(ch), ul = unlocked(ci);
-  return `<button class="proj ${ul ? '' : 'lk'}" data-act="${ul ? 'opench' : 'locked'}" data-a="${ci}"><span class="pi" style="background:${cols[ci % cols.length]}">${ul ? ch.icon[S.theme] : '🔒'}</span><span style="flex:1;min-width:0"><span class="pn">${W().ch} ${ci + 1}: ${esc(chName(ch))}</span><br><span class="pp">${S.ide === 'vs' ? '' : '~/KapiPasta/'}${projName(ci, ch)}${S.ide === 'vs' ? '.csproj' : ''} · ${esc(ch.topic)}</span></span><span class="pb"><span class="pbar"><i style="width:${Math.round(p.p * 100)}%"></i></span><small class="muted">${p.d}/${p.n}</small></span></button>`; }).join('')}</div></div></div>`;
+  return `<button class="proj ${ul ? '' : 'lk'}" data-act="${ul ? 'opench' : 'locked'}" data-a="${ci}"><span class="pi" style="background:${cols[ci % cols.length]}">${ul ? ch.icon[S.theme] : '🔒'}</span><span style="flex:1;min-width:0"><span class="pn">${W().ch} ${ci + 1}: ${esc(chName(ch))}</span><br><span class="pp">${S.ide === 'vs' ? '' : '~/KapiPasta/'}${projName(ci, ch)}${S.ide === 'vs' ? '.csproj' : ''} · ${esc(ch.topic)}</span></span><span class="pb"><span class="pbar"><i style="width:${Math.round(p.p * 100)}%"></i></span><small class="muted">${p.d}/${p.n}</small>${chapGradeHtml(ch, true)}</span></button>`; }).join('')}</div></div></div>`;
 }
 
 /* ===== lesson ===== */
@@ -589,7 +593,7 @@ function profileView() {
 <h2>📊 ${tr('stats')}</h2><div class="statgrid"><div class="stat"><div class="l">💎 XP</div><div class="v">${S.xp}</div></div><div class="stat"><div class="l">✅ ${tr('tasksDone')}</div><div class="v">${st.okCount}/${total}</div></div>
 <div class="stat"><div class="l">🎯 ${tr('accuracy')}</div><div class="v">${st.okCount ? Math.round(st.first / st.okCount * 100) : 0}%</div></div><div class="stat"><div class="l">🔥 ${tr('bestCombo')}</div><div class="v">${S.bestCombo}</div></div>
 <div class="stat"><div class="l">📅 ${tr('streak')}</div><div class="v">${S.streak.n}</div></div><div class="stat"><div class="l">👀 ${tr('awayCount')}</div><div class="v">${Object.values(S.away || {}).reduce((x, a) => x + a.n, 0)}</div></div><div class="stat"><div class="l">⏱ ${tr('timeSpent')}</div><div class="v">${fmtDur(Object.keys(S.done).filter(id => S.done[id].ok).reduce((x, id) => x + taskSec(id), 0))}</div></div><div class="stat"><div class="l">▶ ${tr('codeRuns')}</div><div class="v">${S.codeRuns}</div></div></div>
-<p class="muted" style="font-size:12px">ℹ️ ${tr('awayInfo')}</p><h2>🏅 ${tr('badges')}</h2><div class="badges">${list.map(b => `<div class="badge ${b.ok ? '' : 'off'}"><div class="bi">${b.ico}</div><b>${esc(b.n)}</b><small>${esc(b.d)}</small></div>`).join('')}</div>
+<p class="muted" style="font-size:12px">ℹ️ ${tr('awayInfo')}</p><h2>📝 ${tr('chapGrades')}</h2><div class="grades">${course().map((ch, i) => `<div><span>${ch.icon[S.theme]} ${i + 1}. ${esc(chName(ch))}</span>${chapGradeHtml(ch, true) || '<span class="muted">—</span>'}</div>`).join('')}</div><h2>🏅 ${tr('badges')}</h2><div class="badges">${list.map(b => `<div class="badge ${b.ok ? '' : 'off'}"><div class="bi">${b.ico}</div><b>${esc(b.n)}</b><small>${esc(b.d)}</small></div>`).join('')}</div>
 <div class="row-btns" style="margin-top:18px"><button class="btn pri" data-act="progress">💾 ${tr('progress')}</button></div></div>`;
 }
 

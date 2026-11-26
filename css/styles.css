@@ -208,7 +208,7 @@ label.lbl{font-size:12px;color:var(--muted);display:block;margin:10px 0 4px}
 .proj .pi{width:42px;height:42px;border-radius:10px;display:grid;place-items:center;font-size:21px;flex-shrink:0;color:#fff;font-weight:700}
 .proj .pn{font-weight:600}
 .proj .pp{font-size:12px;color:var(--muted);font-family:'JetBrains Mono',monospace}
-.proj .pb{width:90px;flex-shrink:0}
+.proj .pb{width:96px;flex-shrink:0;display:flex;flex-direction:column;align-items:flex-end;gap:2px}.proj .pb .pbar{width:100%}.gnum{font-weight:800;color:var(--text);font-size:12px}.grades{display:grid;grid-template-columns:repeat(auto-fill,minmax(230px,1fr));gap:6px;margin:8px 0 14px}.grades div{display:flex;align-items:center;gap:8px;background:var(--card);border:1px solid var(--line);border-radius:8px;padding:6px 10px;font-size:13px}.grades div span:first-child{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .proj.lk{opacity:.55}
 .pbar{height:6px;background:var(--line);border-radius:4px;overflow:hidden}
 .pbar i{display:block;height:100%;background:var(--ok)}
