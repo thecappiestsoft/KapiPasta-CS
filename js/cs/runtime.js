@@ -811,6 +811,8 @@ class Interp {
       case 'Cast': {
         this.resolveType(e.type, e);
         const v = this.ev(e.e, fr, e.type);
+        // (int)o where o is declared as object: unboxing is checked at run time (InvalidCastException), not by the compiler
+        if (e.e.k === 'Name' && (NUMS.has(e.type.n) || e.type.n === 'bool' || e.type.n === 'char')) { const en = fr.sc.find(e.e.n); if (en && en.t && en.t.n === 'object' && !(v instanceof N && v.t === e.type.n) && !(typeof v === 'boolean' && e.type.n === 'bool')) this.throwEx('InvalidCastException', `Unable to cast object of type '${this.clrName(v)}' to type '${tname(e.type)}'.`, e); }
         if (v instanceof Obj && this.classes.get(e.type.n) === undefined && NUMS.has(e.type.n)) this.err('CS0030', `Cannot convert type '${this.typeOf(v)}' to '${tname(e.type)}'`, e);
         return this.conv(v, e.type, true, e);
       }
@@ -885,6 +887,7 @@ class Interp {
       if (c.native) { if (fr.self && c.nget && c.nget[n]) return c.nget[n].call(this, fr.self); if (fr.self && fr.self.__host) break; c = c.base; continue; }
       const f = c.fields.get(n);
       if (f) {
+        if (c !== C && !this.canAccess(f, fr)) this.accessErr(f, nd);
         if (f.isStatic) { this.ensureStatic(c); return c.sv[n]; }
         if (!fr.self) this.err('CS0120', `An object reference is required for the non-static field, method, or property '${c.name}.${n}'`, nd);
         return fr.self.f[n];
@@ -1343,7 +1346,7 @@ class Interp {
       while (c) {
         if (c.native) { c = c.base; continue; }
         const f = c.fields.get(e.n);
-        if (f) return this.fieldRef(f.isStatic ? null : fr.self, f, e, fr, true);
+        if (f) { if (c !== fr.cls && !this.canAccess(f, fr)) this.accessErr(f, e); return this.fieldRef(f.isStatic ? null : fr.self, f, e, fr, true); }
         const p = c.props.get(e.n);
         if (p) { const self = p.isStatic ? null : fr.self; if (!p.isStatic && !self) this.err('CS0120', `An object reference is required for the non-static field, method, or property '${c.name}.${e.n}'`, e); return new Ref(() => this.getProp(self, p, e, fr, true), v => this.setProp(self, p, v, e, fr), p.type); }
         c = c.base;

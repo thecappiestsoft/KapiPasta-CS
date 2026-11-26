@@ -141,9 +141,12 @@ function merge(base, tr) {
 }
 /* extra tasks: content/pl/part5+ call X('lessonId', [[plTask, enOverrides], ...]) – appended at the end of the lesson
    (never reorder published tasks: task ids are lessonId-index) */
-const EXTRA = [];
+const EXTRA = [], EXTRA_LES = [];
 const X = (lessonId, tasks) => EXTRA.push({ lessonId, tasks });
-const PL = load('pl', { CH: [], X }).CH;
+/* XL('chapterId', plLesson, enLesson): a new lesson appended at the end of a chapter (tasks come from X) */
+const XL = (chId, pl, en) => EXTRA_LES.push({ chId, pl, en });
+const PL = load('pl', { CH: [], X, XL }).CH;
+for (const { chId, pl } of EXTRA_LES) { const ch = PL.find(c => c.id === chId); if (!ch) { P(chId, 'XL(): unknown chapter'); continue; } ch.lessons.push(Object.assign({ tasks: [] }, pl)); }
 const EXTRA_EN = {};
 for (const { lessonId, tasks } of EXTRA) {
   const L = PL.flatMap(ch => ch.lessons).find(l => l.id === lessonId); if (!L) { P(lessonId, 'X(): unknown lesson'); continue; }
@@ -155,7 +158,7 @@ if (process.argv.includes('--counts') || process.env.KAPI_COUNTS) for (const ch 
 lang = 'pl'; verify(PL);
 const hasEN = fs.readdirSync(path.join(ROOT, 'content', 'en')).some(f => f.endsWith('.js'));
 let EN = [];
-if (hasEN && !process.argv.includes('--pl')) { const TRS = load('en', { TR: { ch: {}, les: {} } }).TR; for (const id in EXTRA_EN) { const tl = TRS.les[id] || (TRS.les[id] = {}); tl.tasks = (tl.tasks || []).concat(EXTRA_EN[id]); } lang = 'en'; EN = merge(PL, TRS); verify(EN); }
+if (hasEN && !process.argv.includes('--pl')) { const TRS = load('en', { TR: { ch: {}, les: {} } }).TR; for (const { pl, en } of EXTRA_LES) TRS.les[pl.id] = Object.assign({}, en, { tasks: [] }); for (const id in EXTRA_EN) { const tl = TRS.les[id] || (TRS.les[id] = {}); tl.tasks = (tl.tasks || []).concat(EXTRA_EN[id]); } lang = 'en'; EN = merge(PL, TRS); verify(EN); }
 else console.log('(EN skipped)');
 // seal answers: the browser gets hashes for checking and a sealed blob for texts shown after answering (js/seal.js)
 const Seal = require('../js/seal.js');

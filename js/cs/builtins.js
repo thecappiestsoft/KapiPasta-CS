@@ -359,8 +359,9 @@ P.callStatic = function (tn, n, args, nd, fr, soft, targs) {
     case 'Path': if (n === 'Combine') return a.map(x => this.str(x)).join('/'); if (n === 'GetExtension') { const m = /\.[^./\\]*$/.exec(A(0)); return m ? m[0] : ''; } if (n === 'GetFileName') return A(0).split(/[\\/]/).pop(); break;
     case 'Directory': if (n === 'Exists') return true; if (n === 'CreateDirectory') return null; if (n === 'GetFiles') return new Arr({ n: 'string' }, Object.keys(this.files)); break;
     case 'Enum': {
-      const E = targs ? this.enums.get(targs[0].n) : (A(0) instanceof TypeObj ? this.enums.get(A(0).ty.n) : null);
-      const off = targs ? 0 : 1;
+      const outT = n === 'TryParse' && !targs && !(A(0) instanceof TypeObj) && args[args.length - 1] instanceof Ref && args[args.length - 1].type ? this.enums.get(args[args.length - 1].type.n) : null; // Enum.TryParse(s, out Color c): type from the out variable
+      const E = targs ? this.enums.get(targs[0].n) : outT || (A(0) instanceof TypeObj ? this.enums.get(A(0).ty.n) : null);
+      const off = targs || outT ? 0 : 1;
       if (!E && n !== 'GetName') this.err('CS1503', 'Argument 1: cannot convert to \'System.Type\'', nd);
       switch (n) {
         case 'GetValues': return new Arr({ n: E.name }, E.members.map(m => new EnumVal(E, m.v)));
