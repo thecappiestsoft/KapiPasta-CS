@@ -189,6 +189,7 @@ Ograniczenie: gdy w metodzie pojawi się `MessageBox` z Tak/Nie albo `ShowDialog
 - **Panel nauczyciela – oceny:** tabela klasy pokazuje ocenę każdego działu, szczegóły ucznia – oceny działów i lekcji, CSV – kolumny `chN_%` i `chN_grade`. W sekcji „Progi ocen” nauczyciel może zmienić progi (zapis lokalny; uczniowie widzą skalę domyślną).
 - **Panel nauczyciela**: import wielu plików lub kodów, tabela klasy, mapa postępu w rozdziałach, efekty kształcenia, najtrudniejsze zadania, szczegóły ucznia, eksport CSV oraz kolumna 🛡️ **Wiarygodność postępu** (patrz niżej).
 - PIN nauczyciela: min. 6 cyfr, zapisany jako PBKDF2-SHA256 (250 000 iteracji, losowa sól); po 5 błędnych próbach rośnie czas oczekiwania (30 s, 60 s, … do 1 h). Stare PIN-y (4 cyfry, stary skrót) działają i są przepisywane na nowy format przy pierwszym logowaniu.
+- **Odblokowanie działów przez nauczyciela:** w panelu „🔓 Odblokuj działy” nauczyciel zaznacza działy i dostaje kod (np. `KAPI-28-0N`) oraz link (`…#unlock-kapi-28-0n`). Uczeń wpisuje kod w Ustawieniach (zakładka etapu nauki) albo otwiera link. Nowy kod zastępuje poprzedni, więc kod bez zaznaczonych działów cofa odblokowania. Kod zawiera sumę kontrolną, ale nie jest zabezpieczeniem – działa jak hasło do przekazania klasie.
 - ⚠️ Nie zmieniaj `SALT` ani formatu `payload()` w `js/app.js`, bo stare pliki uczniów przestaną się wczytywać.
 
 ## Bezpieczeństwo – co chroni, a czego nie

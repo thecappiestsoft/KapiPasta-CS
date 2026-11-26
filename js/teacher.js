@@ -75,6 +75,15 @@ function verifyStudent(k) {
     o.ver = { ok, bad, at: Date.now() }; tsave(); closeModal(); studentDetails(k); renderMain();
   }, 30);
 }
+function unlockBox() {
+  const C = course(); const sel = TV.unlock || [];
+  const code = makeUnlockCode(sel);
+  const link = code ? location.href.split('#')[0] + '#unlock-' + code.toLowerCase() : '';
+  return `<details class="readme"${TV.unlockOpen ? ' open' : ''}><summary><b>🔓 ${tr('tUnlock')}</b></summary><p class="muted" style="font-size:13px">${tr('tUnlockD')}</p>
+<div class="grades">${C.map((ch, i) => `<label style="cursor:pointer"><input type="checkbox" data-act="tunlockch" data-a="${i}" ${sel.includes(i) ? 'checked' : ''}> <span>${ch.icon[S.theme]} ${i + 1}. ${esc(chName(ch))}</span></label>`).join('')}</div>
+${!sel.length ? `<p class="muted" style="font-size:13px">${tr('tUnlockPick')}</p>` : ''}${code ? `<p>${tr('tUnlockCode')}: <b id="tucode" style="font-family:var(--mono,monospace);font-size:18px;letter-spacing:1px">${code}</b> <button class="btn sm" data-act="copy" data-src="tucode">${tr('copyCode')}</button></p>
+<p class="muted" style="font-size:13px">${tr('tUnlockLink')}: <span id="tulink" style="word-break:break-all">${esc(link)}</span> <button class="btn sm" data-act="copy" data-src="tulink">📋</button></p>` : ''}</details>`;
+}
 function gradesBox() {
   const m = tMins();
   return `<details class="readme"${T.grades ? ' open' : ''}><summary><b>📝 ${tr('tGrades')}</b> <span class="muted">(${[2, 3, 4, 5, 6].map(g => `${g}: ${Math.round(m[g - 1] * 100)}%`).join(' · ')})</span></summary><p class="muted" style="font-size:13px">${tr('tGradesD')}</p>
@@ -107,6 +116,7 @@ function teacherView() {
 <div class="drop" id="tdrop"><input type="file" id="tfile" accept=".txt,.kapi,text/plain" multiple hidden><button class="btn pri" data-act="pickfile" data-a="tfile">${tr('pickFile')}</button></div>
 <textarea class="inp" id="tpaste" placeholder="${tr('pasteCode')}" style="margin-top:8px"></textarea><div class="row-btns"><button class="btn" data-act="tpaste">${tr('load')}</button>${TV.msg ? `<span class="chip acc">${TV.msg}</span>` : ''}</div></div>
 ${gradesBox()}
+${unlockBox()}
 ${Object.keys(T.students).length ? `
 <div class="statgrid"><div class="stat"><div class="l">👩‍🎓 ${tr('tStudents')}</div><div class="v">${list.length}</div></div><div class="stat"><div class="l">💎 ${tr('tAvgXp')}</div><div class="v">${Math.round(avg(x => x.o.xp))}</div></div>
 <div class="stat"><div class="l">📈 ${tr('tAvgProg')}</div><div class="v">${Math.round(avg(x => x.s.p) * 100)}%</div></div><div class="stat"><div class="l">🎯 ${tr('tAcc')}</div><div class="v">${Math.round(avg(x => x.s.acc) * 100)}%</div></div></div>
@@ -157,6 +167,7 @@ async function teacherAct(act, a, el) {
     case 'tsort': if (TV.sort === a) TV.dir *= -1; else { TV.sort = a; TV.dir = -1; } renderMain(); break;
     case 'tdet': studentDetails(a); break;
     case 'tverify': verifyStudent(a); break;
+    case 'tunlockch': { const i = +a; TV.unlock = TV.unlock || []; TV.unlock = TV.unlock.includes(i) ? TV.unlock.filter(x => x !== i) : TV.unlock.concat(i).sort((x, y) => x - y); TV.unlockOpen = true; renderMain(); break; }
     case 'tgrades': { const v = [0]; for (const g of [2, 3, 4, 5, 6]) { const x = +document.getElementById('tg' + g).value; v.push(Math.min(100, Math.max(1, x || 0)) / 100); }
       for (let i = 2; i < 6; i++) if (v[i] <= v[i - 1]) { TV.msg = tr('tGradesBad'); renderMain(); return; }
       T.grades = v; tsave(); TV.msg = '✔ ' + tr('tGrades'); renderMain(); break; }
