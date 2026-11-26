@@ -139,11 +139,26 @@ function merge(base, tr) {
   }
   return out;
 }
-const PL = load('pl', { CH: [] }).CH;
+/* extra tasks: content/pl/part5+ call X('lessonId', [[plTask, enOverrides], ...]) – appended at the end of the lesson
+   (never reorder published tasks: task ids are lessonId-index) */
+const EXTRA = [], EXTRA_LES = [];
+const X = (lessonId, tasks) => EXTRA.push({ lessonId, tasks });
+/* XL('chapterId', plLesson, enLesson): a new lesson appended at the end of a chapter (tasks come from X) */
+const XL = (chId, pl, en) => EXTRA_LES.push({ chId, pl, en });
+const PL = load('pl', { CH: [], X, XL }).CH;
+for (const { chId, pl } of EXTRA_LES) { const ch = PL.find(c => c.id === chId); if (!ch) { P(chId, 'XL(): unknown chapter'); continue; } ch.lessons.push(Object.assign({ tasks: [] }, pl)); }
+const EXTRA_EN = {};
+for (const { lessonId, tasks } of EXTRA) {
+  const L = PL.flatMap(ch => ch.lessons).find(l => l.id === lessonId); if (!L) { P(lessonId, 'X(): unknown lesson'); continue; }
+  for (const [pl, en] of tasks) { L.tasks.push(pl); (EXTRA_EN[lessonId] = EXTRA_EN[lessonId] || []).push(en || {}); }
+}
+/* every chapter: 15 basic + 15 intermediate + 10 advanced tasks (40) – so a chapter grade 1-6 is easy to read */
+const PER_LEVEL = [15, 15, 10];
+for (const ch of PL) { const c = [0, 0, 0]; ch.lessons.forEach(L => L.tasks.forEach(t => c[t.l - 1]++)); if (c.join() !== PER_LEVEL.join()) P(ch.id, `tasks per level ${c.join('/')} (expected ${PER_LEVEL.join('/')})`); }
 lang = 'pl'; verify(PL);
 const hasEN = fs.readdirSync(path.join(ROOT, 'content', 'en')).some(f => f.endsWith('.js'));
 let EN = [];
-if (hasEN && !process.argv.includes('--pl')) { const TRS = load('en', { TR: { ch: {}, les: {} } }).TR; lang = 'en'; EN = merge(PL, TRS); verify(EN); }
+if (hasEN && !process.argv.includes('--pl')) { const TRS = load('en', { TR: { ch: {}, les: {} } }).TR; for (const { pl, en } of EXTRA_LES) TRS.les[pl.id] = Object.assign({}, en, { tasks: [] }); for (const id in EXTRA_EN) { const tl = TRS.les[id] || (TRS.les[id] = {}); tl.tasks = (tl.tasks || []).concat(EXTRA_EN[id]); } lang = 'en'; EN = merge(PL, TRS); verify(EN); }
 else console.log('(EN skipped)');
 // seal answers: the browser gets hashes for checking and a sealed blob for texts shown after answering (js/seal.js)
 const Seal = require('../js/seal.js');

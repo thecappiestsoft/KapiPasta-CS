@@ -22,13 +22,16 @@ async function checkPin(p) {
 function pinWait() { const f = T.fail || { n: 0, until: 0 }; return Math.max(0, Math.ceil((f.until - Date.now()) / 1000)); }
 function pinFailed() { const f = T.fail || { n: 0, until: 0 }; f.n++; if (f.n >= 5) f.until = Date.now() + Math.min(3600, 30 * 2 ** (f.n - 5)) * 1000; T.fail = f; tsave(); }
 
+const tMins = () => (Array.isArray(T.grades) && T.grades.length === 6 ? T.grades : GRADE_MIN);
+const tGrade = p => (p > 0 ? gradeOf(p, tMins()) : 0);
 function stuStats(o) {
   o.stage = normStage(o.stage);
   const C = course(); let n = 0, d = 0, first = 0, att = 0; const chs = [];
   C.forEach(ch => { let cn = 0, cd = 0; ch.lessons.forEach(L => L.tasks.forEach(t => { if (t.l > o.stage) return; cn++; const r = o.done[t.id]; if (r && r[0]) { cd++; if (r[1]) first++; } })); n += cn; d += cd; chs.push(cn ? cd / cn : 0); });
-  for (const id in o.done) if (o.done[id][2] > 0) att++;
+  let sec = 0, away = 0, awaySec = 0;
+  for (const id in o.done) { const r = o.done[id]; if (r[2] > 0) att++; sec += r[3] || 0; away += r[4] || 0; awaySec += r[5] || 0; }
   const lv = levelOf(o.xp).lv;
-  return { n, d, p: n ? d / n : 0, acc: d ? first / d : 0, chs, lv, att };
+  return { n, d, p: n ? d / n : 0, acc: d ? first / d : 0, chs, lv, att, sec, away, awaySec };
 }
 /* ===== integrity: a progress file is made on the student's device, so the teacher re-checks what can be checked ===== */
 function taskIndex() { const m = {}; for (const lg in COURSE_DATA) COURSE_DATA[lg].forEach(ch => ch.lessons.forEach(L => L.tasks.forEach(t => { if (!m[t.id] || lg === S.lang) m[t.id] = t; }))); return m; }
@@ -72,6 +75,12 @@ function verifyStudent(k) {
     o.ver = { ok, bad, at: Date.now() }; tsave(); closeModal(); studentDetails(k); renderMain();
   }, 30);
 }
+function gradesBox() {
+  const m = tMins();
+  return `<details class="readme"${T.grades ? ' open' : ''}><summary><b>📝 ${tr('tGrades')}</b> <span class="muted">(${[2, 3, 4, 5, 6].map(g => `${g}: ${Math.round(m[g - 1] * 100)}%`).join(' · ')})</span></summary><p class="muted" style="font-size:13px">${tr('tGradesD')}</p>
+<div class="row-btns" style="align-items:flex-end">${[2, 3, 4, 5, 6].map(g => `<label style="display:flex;flex-direction:column;font-size:12px">${tr('tGrade')} ${g}<span style="display:flex;align-items:center;gap:3px"><input class="inp" id="tg${g}" type="number" min="1" max="100" value="${Math.round(m[g - 1] * 100)}" style="width:72px">%</span></label>`).join('')}
+<button class="btn pri" data-act="tgrades">${tr('save')}</button><button class="btn ghost" data-act="tgradesreset">${tr('tGradesReset')}</button></div></details>`;
+}
 function heatColor(p) { if (p <= 0) return 'var(--line)'; const h = Math.round(p * 120); return `hsl(${h} 65% 45%)`; }
 function teacherView() {
   if (!T.pin) return `<div class="doc"><div class="crumb">// Teacher.cs</div><div class="banner">${capy({ size: 120, mood: 'think' })}<div><h1>🧑‍🏫 ${tr('teacher')}</h1><p class="muted">${tr('tPinSet')}</p></div></div>
@@ -82,7 +91,7 @@ function teacherView() {
   let list = Object.entries(T.students).map(([k, o]) => ({ k, o, s: stuStats(o) }));
   const classes = [...new Set(list.map(x => x.o.cls || '—'))].sort();
   if (TV.filter) list = list.filter(x => (x.o.cls || '—') === TV.filter);
-  const key = { name: x => (x.o.name || '').toLowerCase(), cls: x => x.o.cls || '', stage: x => x.o.stage, lv: x => x.o.xp, xp: x => x.o.xp, prog: x => x.s.p, acc: x => x.s.acc, last: x => x.o.ts }[TV.sort] || (x => x.o.xp);
+  const key = { name: x => (x.o.name || '').toLowerCase(), cls: x => x.o.cls || '', stage: x => x.o.stage, lv: x => x.o.xp, xp: x => x.o.xp, prog: x => x.s.p, acc: x => x.s.acc, time: x => x.s.sec, away: x => x.s.away, last: x => x.o.ts }[TV.sort] || (x => x.o.xp);
   list.sort((a, b) => (key(a) > key(b) ? 1 : key(a) < key(b) ? -1 : 0) * TV.dir);
   const avg = f => list.length ? list.reduce((a, x) => a + f(x), 0) / list.length : 0;
   const th = (k, n) => `<th data-act="tsort" data-a="${k}">${n}${TV.sort === k ? (TV.dir < 0 ? ' ▼' : ' ▲') : ''}</th>`;
@@ -97,13 +106,14 @@ function teacherView() {
 <div class="readme"><h3>📥 ${tr('tImport')}</h3><p class="muted">${tr('tImportD')}</p>
 <div class="drop" id="tdrop"><input type="file" id="tfile" accept=".txt,.kapi,text/plain" multiple hidden><button class="btn pri" data-act="pickfile" data-a="tfile">${tr('pickFile')}</button></div>
 <textarea class="inp" id="tpaste" placeholder="${tr('pasteCode')}" style="margin-top:8px"></textarea><div class="row-btns"><button class="btn" data-act="tpaste">${tr('load')}</button>${TV.msg ? `<span class="chip acc">${TV.msg}</span>` : ''}</div></div>
+${gradesBox()}
 ${Object.keys(T.students).length ? `
 <div class="statgrid"><div class="stat"><div class="l">👩‍🎓 ${tr('tStudents')}</div><div class="v">${list.length}</div></div><div class="stat"><div class="l">💎 ${tr('tAvgXp')}</div><div class="v">${Math.round(avg(x => x.o.xp))}</div></div>
 <div class="stat"><div class="l">📈 ${tr('tAvgProg')}</div><div class="v">${Math.round(avg(x => x.s.p) * 100)}%</div></div><div class="stat"><div class="l">🎯 ${tr('tAcc')}</div><div class="v">${Math.round(avg(x => x.s.acc) * 100)}%</div></div></div>
 <div class="row-btns" style="align-items:center"><span class="muted">${tr('tFilter')}:</span><select class="inp" id="tfilter" style="width:auto">${['', ...classes].map(c => `<option value="${esc(c)}" ${TV.filter === c ? 'selected' : ''}>${c ? esc(c) : tr('tAll')}</option>`).join('')}</select></div>
-<div class="tscroll"><table class="tbl"><thead><tr>${th('name', tr('tName'))}${th('cls', tr('tClass'))}${th('stage', tr('tStage'))}${th('lv', tr('tLevel'))}${th('xp', 'XP')}${th('prog', tr('tProg'))}${th('acc', tr('tAcc'))}<th>${tr('tChapters')}</th>${th('last', tr('tLast'))}<th title="${esc(tr('tIntegrity'))}">🛡️</th><th></th></tr></thead><tbody>
+<div class="tscroll"><table class="tbl"><thead><tr>${th('name', tr('tName'))}${th('cls', tr('tClass'))}${th('stage', tr('tStage'))}${th('lv', tr('tLevel'))}${th('xp', 'XP')}${th('prog', tr('tProg'))}${th('acc', tr('tAcc'))}${th('time', '⏱ ' + tr('tTime'))}${th('away', '👀')}<th>${tr('tChapters')}</th>${th('last', tr('tLast'))}<th title="${esc(tr('tIntegrity'))}">🛡️</th><th></th></tr></thead><tbody>
 ${list.map(({ k, o, s }) => `<tr><td><b>${esc(o.name)}</b></td><td>${esc(o.cls || '—')}</td><td>${['🌱', '🚀', '🏆'][o.stage - 1]}</td><td>${s.lv}</td><td>${o.xp}</td><td><div class="pbar" style="width:70px;display:inline-block;vertical-align:middle"><i style="width:${Math.round(s.p * 100)}%"></i></div> ${Math.round(s.p * 100)}%</td><td>${Math.round(s.acc * 100)}%</td>
-<td>${s.chs.map((p, i) => `<span class="heat" style="background:${heatColor(p)}" title="${esc(chName(C[i]))}: ${Math.round(p * 100)}%">${i + 1}</span>`).join(' ')}</td><td>${new Date(o.ts).toLocaleDateString()}</td><td>${integrityCell(o)}</td><td><button class="btn sm" data-act="tdet" data-a="${esc(k)}">${tr('tDetails')}</button> <button class="btn sm ghost" data-act="tdel" data-a="${esc(k)}">✕</button></td></tr>`).join('')}
+<td>${s.sec ? fmtDur(s.sec) : '—'}</td><td title="${esc(tr('tAway'))}${s.away ? ': ' + fmtDur(s.awaySec) : ''}">${s.away ? `<b style="color:${s.away > 5 ? 'var(--bad)' : 'inherit'}">${s.away}</b>` : '0'}</td><td>${s.chs.map((p, i) => `<span class="heat" style="background:${heatColor(p)}" title="${i + 1}. ${esc(chName(C[i]))}: ${Math.round(p * 100)}% · ${esc(tr('tGrade'))} ${tGrade(p) || '—'}">${tGrade(p) || '·'}</span>`).join(' ')}</td><td>${new Date(o.ts).toLocaleDateString()}</td><td>${integrityCell(o)}</td><td><button class="btn sm" data-act="tdet" data-a="${esc(k)}">${tr('tDetails')}</button> <button class="btn sm ghost" data-act="tdel" data-a="${esc(k)}">✕</button></td></tr>`).join('')}
 </tbody></table></div>
 <h2 style="margin-top:20px">🔥 ${tr('tHard')}</h2><p class="muted">${tr('tHardD')}</p>
 ${hard.length ? `<div class="projlist">${hard.map(([id, a]) => { const I = tinfo[id]; return `<div class="proj" style="cursor:default"><span class="pi" style="background:${heatColor(1 - a.fail / a.att)}">${{ quiz: '❓', fill: '✍️', bug: '🐞', code: I.t.wpf ? '🪟' : '💻' }[I.t.t]}</span><span style="flex:1;min-width:0"><span class="pn">${esc(strip(I.t.q)).slice(0, 110)}</span><br><span class="pp">${I.ci + 1}.${I.li + 1} ${esc(I.L.title)} · ${tr('tFails', { n: a.fail + '/' + a.att })}</span></span></div>`; }).join('')}</div>` : `<p class="muted">${tr('tNone')}</p>`}
@@ -114,12 +124,12 @@ ${hard.length ? `<div class="projlist">${hard.map(([id, a]) => { const I = tinfo
 }
 function studentDetails(k) {
   const o = T.students[k]; if (!o) return; const C = course(); const s = stuStats(o);
-  const rows = []; C.forEach((ch, ci) => ch.lessons.forEach((L, li) => { const ts = L.tasks.filter(t => t.l <= o.stage); const d = ts.filter(t => o.done[t.id] && o.done[t.id][0]).length; const f = ts.filter(t => o.done[t.id] && o.done[t.id][1]).length; const tries = ts.reduce((a, t) => a + (o.done[t.id] ? o.done[t.id][2] : 0), 0); rows.push({ ci, li, L, n: ts.length, d, f, tries, st: (o.stars || {})[L.id] || 0 }); }));
+  const rows = []; C.forEach((ch, ci) => ch.lessons.forEach((L, li) => { const ts = L.tasks.filter(t => t.l <= o.stage); const d = ts.filter(t => o.done[t.id] && o.done[t.id][0]).length; const f = ts.filter(t => o.done[t.id] && o.done[t.id][1]).length; const tries = ts.reduce((a, t) => a + (o.done[t.id] ? o.done[t.id][2] : 0), 0); const sec = ts.reduce((a, t) => a + ((o.done[t.id] || [])[3] || 0), 0); const aw = ts.reduce((a, t) => a + ((o.done[t.id] || [])[4] || 0), 0); const sf = starsFor(ts, Object.fromEntries(ts.filter(t => o.done[t.id]).map(t => [t.id, { ok: o.done[t.id][0], first: o.done[t.id][1] }]))); rows.push({ ci, li, L, n: ts.length, d, f, tries, sec, aw, grade: sf.grade, perfect: sf.perfect }); }));
   const weak = rows.filter(r => r.d > 0 && r.f / Math.max(r.d, 1) < .6).map(r => `${r.ci + 1}.${r.li + 1} ${esc(r.L.title)}`);
   modal(`<div class="mh">👩‍🎓 ${esc(o.name)} ${o.cls ? '· ' + esc(o.cls) : ''}<button class="btn sm ghost" data-act="close">✕</button></div><div class="mb">
-<div class="statgrid"><div class="stat"><div class="l">⭐ ${tr('level')}</div><div class="v">${s.lv}</div></div><div class="stat"><div class="l">💎 XP</div><div class="v">${o.xp}</div></div><div class="stat"><div class="l">✅ ${tr('tasksDone')}</div><div class="v">${s.d}/${s.n}</div></div><div class="stat"><div class="l">🎯 ${tr('accuracy')}</div><div class="v">${Math.round(s.acc * 100)}%</div></div><div class="stat"><div class="l">🔥 ${tr('streak')}</div><div class="v">${o.streak || 0}</div></div><div class="stat"><div class="l">🏅 ${tr('badges')}</div><div class="v">${(o.badges || []).length}</div></div></div>
-${integrityBox(k, o)}<h3 style="margin-top:14px">📌 ${tr('tWeak')}</h3><p>${weak.length ? weak.join('<br>') : tr('tNone')}</p>
-<div class="tscroll"><table class="tbl"><thead><tr><th>#</th><th>${W().les}</th><th>✅</th><th>🎯</th><th>↻</th><th>⭐</th></tr></thead><tbody>${rows.map(r => `<tr><td>${r.ci + 1}.${r.li + 1}</td><td>${esc(r.L.title)}</td><td>${r.d}/${r.n}</td><td>${r.d ? Math.round(r.f / r.d * 100) + '%' : '—'}</td><td>${r.tries}</td><td>${'⭐'.repeat(r.st)}</td></tr>`).join('')}</tbody></table></div></div>`, 'wide');
+<div class="statgrid"><div class="stat"><div class="l">⭐ ${tr('level')}</div><div class="v">${s.lv}</div></div><div class="stat"><div class="l">💎 XP</div><div class="v">${o.xp}</div></div><div class="stat"><div class="l">✅ ${tr('tasksDone')}</div><div class="v">${s.d}/${s.n}</div></div><div class="stat"><div class="l">🎯 ${tr('accuracy')}</div><div class="v">${Math.round(s.acc * 100)}%</div></div><div class="stat"><div class="l">⏱ ${tr('tTime')}</div><div class="v">${fmtDur(s.sec)}</div></div><div class="stat"><div class="l">👀 ${tr('tAway')}</div><div class="v">${s.away}${s.away ? ` <small class="muted">(${fmtDur(s.awaySec)})</small>` : ''}</div></div><div class="stat"><div class="l">🔥 ${tr('streak')}</div><div class="v">${o.streak || 0}</div></div><div class="stat"><div class="l">🏅 ${tr('badges')}</div><div class="v">${(o.badges || []).length}</div></div></div>
+<h3 style="margin-top:14px">📝 ${tr('chapGrades')}</h3><div class="grades">${s.chs.map((p, i) => `<div><span>${i + 1}. ${esc(chName(C[i]))}</span><span class="muted">${Math.round(p * 100)}%</span> <b class="gnum" style="font-size:15px">${tGrade(p) || '—'}</b></div>`).join('')}</div>${integrityBox(k, o)}<h3 style="margin-top:14px">📌 ${tr('tWeak')}</h3><p>${weak.length ? weak.join('<br>') : tr('tNone')}</p>
+<div class="tscroll"><table class="tbl"><thead><tr><th>#</th><th>${W().les}</th><th>✅</th><th>🎯</th><th>↻</th><th>⏱</th><th title="${esc(tr('tAway'))}">👀</th><th>⭐</th></tr></thead><tbody>${rows.map(r => `<tr><td>${r.ci + 1}.${r.li + 1}</td><td>${esc(r.L.title)}</td><td>${r.d}/${r.n}</td><td>${r.d ? Math.round(r.f / r.d * 100) + '%' : '—'}</td><td>${r.tries}</td><td>${r.sec ? fmtDur(r.sec) : '—'}</td><td>${r.aw || ''}</td><td style="white-space:nowrap">${r.grade ? `<span class="stars" title="${esc(tr('grade'))}: ${r.grade}">${starRow(r.grade)}</span> <b>${r.grade}</b>${r.perfect ? perfectIco() : ''}` : ''}</td></tr>`).join('')}</tbody></table></div></div>`, 'wide');
 }
 async function addStudentCodes(texts) {
   let ok = 0, bad = 0;
@@ -135,8 +145,8 @@ async function addStudentCodes(texts) {
 }
 async function teacherFiles(files) { const texts = []; for (const f of files) texts.push(await f.text()); addStudentCodes(texts); }
 function csvExport() {
-  const C = course(); const rows = [['name', 'class', 'stage', 'level', 'xp', 'tasks_done', 'tasks_total', 'progress_%', 'first_try_%', 'streak', 'badges', 'last_export', ...C.map((ch, i) => `ch${i + 1}_%`)]];
-  Object.values(T.students).forEach(o => { const s = stuStats(o); rows.push([o.name, o.cls || '', o.stage, s.lv, o.xp, s.d, s.n, Math.round(s.p * 100), Math.round(s.acc * 100), o.streak || 0, (o.badges || []).length, new Date(o.ts).toISOString().slice(0, 10), ...s.chs.map(p => Math.round(p * 100))]); });
+  const C = course(); const rows = [['name', 'class', 'stage', 'level', 'xp', 'tasks_done', 'tasks_total', 'progress_%', 'first_try_%', 'time_min', 'left_app', 'away_min', 'streak', 'badges', 'last_export', ...C.flatMap((ch, i) => [`ch${i + 1}_%`, `ch${i + 1}_grade`])]];
+  Object.values(T.students).forEach(o => { const s = stuStats(o); rows.push([o.name, o.cls || '', o.stage, s.lv, o.xp, s.d, s.n, Math.round(s.p * 100), Math.round(s.acc * 100), Math.round(s.sec / 6) / 10, s.away, Math.round(s.awaySec / 6) / 10, o.streak || 0, (o.badges || []).length, new Date(o.ts).toISOString().slice(0, 10), ...s.chs.flatMap(p => [Math.round(p * 100), tGrade(p) || ''])]); });
   return '﻿' + rows.map(r => r.map(v => /[;"\n]/.test(String(v)) ? `"${String(v).replace(/"/g, '""')}"` : v).join(';')).join('\n');
 }
 async function teacherAct(act, a, el) {
@@ -147,6 +157,10 @@ async function teacherAct(act, a, el) {
     case 'tsort': if (TV.sort === a) TV.dir *= -1; else { TV.sort = a; TV.dir = -1; } renderMain(); break;
     case 'tdet': studentDetails(a); break;
     case 'tverify': verifyStudent(a); break;
+    case 'tgrades': { const v = [0]; for (const g of [2, 3, 4, 5, 6]) { const x = +document.getElementById('tg' + g).value; v.push(Math.min(100, Math.max(1, x || 0)) / 100); }
+      for (let i = 2; i < 6; i++) if (v[i] <= v[i - 1]) { TV.msg = tr('tGradesBad'); renderMain(); return; }
+      T.grades = v; tsave(); TV.msg = '✔ ' + tr('tGrades'); renderMain(); break; }
+    case 'tgradesreset': delete T.grades; tsave(); renderMain(); break;
     case 'tdel': delete T.students[a]; tsave(); renderMain(); break;
     case 'tclear': confirmBox(tr('tClearQ'), () => { T.students = {}; tsave(); renderMain(); }); break;
     case 'tpaste': addStudentCodes([document.getElementById('tpaste').value]); break;

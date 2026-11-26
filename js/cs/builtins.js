@@ -199,6 +199,8 @@ P.getBuiltinStatic = function (tn, n, nd, fr, soft) {
     case 'long': if (n === 'MaxValue') return mk('long', 9223372036854775807n); if (n === 'MinValue') return mk('long', -9223372036854775808n); break;
     case 'short': if (n === 'MaxValue') return mk('short', 32767); if (n === 'MinValue') return mk('short', -32768); break;
     case 'byte': if (n === 'MaxValue') return mk('byte', 255); if (n === 'MinValue') return mk('byte', 0); break;
+    case 'sbyte': if (n === 'MaxValue') return mk('sbyte', 127); if (n === 'MinValue') return mk('sbyte', -128); break;
+    case 'ushort': if (n === 'MaxValue') return mk('ushort', 65535); if (n === 'MinValue') return mk('ushort', 0); break;
     case 'uint': if (n === 'MaxValue') return mk('uint', 4294967295); if (n === 'MinValue') return mk('uint', 0); break;
     case 'double': { const m = { MaxValue: Number.MAX_VALUE, MinValue: -Number.MAX_VALUE, Epsilon: 5e-324, PositiveInfinity: Infinity, NegativeInfinity: -Infinity, NaN: NaN, Pi: Math.PI }; if (n in m) return mk('double', m[n]); break; }
     case 'float': { const m = { MaxValue: 3.4028234663852886e38, MinValue: -3.4028234663852886e38, Epsilon: 1.401298464324817e-45, PositiveInfinity: Infinity, NegativeInfinity: -Infinity, NaN: NaN }; if (n in m) return mk('float', m[n]); break; }
@@ -357,8 +359,9 @@ P.callStatic = function (tn, n, args, nd, fr, soft, targs) {
     case 'Path': if (n === 'Combine') return a.map(x => this.str(x)).join('/'); if (n === 'GetExtension') { const m = /\.[^./\\]*$/.exec(A(0)); return m ? m[0] : ''; } if (n === 'GetFileName') return A(0).split(/[\\/]/).pop(); break;
     case 'Directory': if (n === 'Exists') return true; if (n === 'CreateDirectory') return null; if (n === 'GetFiles') return new Arr({ n: 'string' }, Object.keys(this.files)); break;
     case 'Enum': {
-      const E = targs ? this.enums.get(targs[0].n) : (A(0) instanceof TypeObj ? this.enums.get(A(0).ty.n) : null);
-      const off = targs ? 0 : 1;
+      const outT = n === 'TryParse' && !targs && !(A(0) instanceof TypeObj) && args[args.length - 1] instanceof Ref && args[args.length - 1].type ? this.enums.get(args[args.length - 1].type.n) : null; // Enum.TryParse(s, out Color c): type from the out variable
+      const E = targs ? this.enums.get(targs[0].n) : outT || (A(0) instanceof TypeObj ? this.enums.get(A(0).ty.n) : null);
+      const off = targs || outT ? 0 : 1;
       if (!E && n !== 'GetName') this.err('CS1503', 'Argument 1: cannot convert to \'System.Type\'', nd);
       switch (n) {
         case 'GetValues': return new Arr({ n: E.name }, E.members.map(m => new EnumVal(E, m.v)));

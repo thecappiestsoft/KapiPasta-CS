@@ -842,7 +842,7 @@ WPF.App = class App {
   /* ===== headless test API (used by task checks) ===== */
   ui() {
     const app = this;
-    const get = n => { const e = typeof n === 'string' ? app.find(n) : n; if (!e) throw new Error('Brak elementu o nazwie ' + n); return e; };
+    const get = n => { const e = typeof n === 'string' ? app.find(n) : n; if (!e) throw new Error('No element named ' + n); return e; };
     const all = () => { const out = []; app.walk(app.mainWin.__ui.root, e => out.push(e)); return out; };
     return {
       el: get,
