@@ -1,12 +1,14 @@
 /* ================= KapiPasta - C# ================= */
 const LS = 'cskapi-v1', LST = 'cskapi-teacher-v1';
 const DEF = { onboarded: false, name: '', cls: '', stage: 1, theme: 'pirate', ide: 'vs', mode: null, lang: 'pl', sound: true, unlockAll: false,
-  xp: 0, done: {}, stars: {}, badges: {}, streak: { last: '', n: 0 }, today: { d: '', xp: 0 }, combo: 0, bestCombo: 0, codeRuns: 0, sbRuns: 0, drafts: {}, created: 0, lastSeen: 0 };
+  xp: 0, done: {}, stars: {}, badges: {}, streak: { last: '', n: 0 }, today: { d: '', xp: 0 }, combo: 0, bestCombo: 0, codeRuns: 0, sbRuns: 0, drafts: {}, proofs: {}, created: 0, lastSeen: 0 };
 function lsGet(k) { try { return JSON.parse(localStorage.getItem(k)); } catch (e) { return null; } }
 function lsSet(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); } catch (e) { } }
 let S = Object.assign({}, DEF, lsGet(LS) || {});
 if (!['pirate', 'kitchen', 'hero'].includes(S.theme)) S.theme = 'pirate';
 if (!['vs', 'vscode'].includes(S.ide)) S.ide = 'vs';
+const normStage = v => ([1, 2, 3].includes(+v) ? +v : 1);
+S.stage = normStage(S.stage);
 if (!S.mode) S.mode = (window.matchMedia && matchMedia('(prefers-color-scheme: dark)').matches) ? 'dark' : 'light';
 const save = () => { S.lastSeen = Date.now(); lsSet(LS, S); };
 window.S = S;
@@ -19,7 +21,11 @@ function tr(k, p) {
 window.tr = tr;
 const pick = a => a[Math.floor(Math.random() * a.length)];
 const W = () => WORDS[S.theme][S.lang] || WORDS[S.theme].pl;
-const course = () => (window.COURSE[S.lang] && window.COURSE[S.lang].length) ? COURSE[S.lang] : COURSE.pl;
+const COURSE_DATA = window.COURSE; try { delete window.COURSE; } catch (e) { window.COURSE = undefined; }
+const course = () => (COURSE_DATA[S.lang] && COURSE_DATA[S.lang].length) ? COURSE_DATA[S.lang] : COURSE_DATA.pl;
+/* answers are sealed by tools/build.js (js/seal.js): check by hash, open texts only when needed */
+const sec = t => Seal.open(t);
+const isRightOpt = (t, oi) => Seal.h(t.id, t.opts[oi]) === t.ah;
 const todayStr = (d = new Date()) => d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
 const stageTasks = L => L.tasks.filter(t => t.l <= S.stage);
 const slug = s => s.normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/ł/g, 'l').replace(/Ł/g, 'L').replace(/[#+]/g, 's').split(/[^A-Za-z0-9]+/).filter(Boolean).map(w => w[0].toUpperCase() + w.slice(1)).join('').slice(0, 26);
@@ -422,11 +428,11 @@ function taskView(t, ts) {
     if (t.inp) h += `<div class="muted" style="font-size:12px">⌨️ stdin: <code>${esc(t.inp.replace(/\n/g, ' ⏎ '))}</code></div>`;
     const rnd = seeded(t.id), order = t.opts.map((_, i) => i);
     for (let i = order.length - 1; i > 0; i--) { const j = Math.floor(rnd() * (i + 1)); [order[i], order[j]] = [order[j], order[i]]; }
-    h += `<div class="opts">${order.map((oi, k) => { const cls = A.right && oi === t.a ? 'right' : (A.wrong || []).includes(oi) ? 'wrong' : (done && oi === t.a && !A.right ? 'right' : '');
+    h += `<div class="opts">${order.map((oi, k) => { const cls = (A.right || done) && isRightOpt(t, oi) ? 'right' : (A.wrong || []).includes(oi) ? 'wrong' : '';
       return `<button class="opt ${cls}" data-act="quiz" data-a="${oi}" ${A.right ? 'disabled' : ''}><span class="lt">${'ABCD'[k]}</span>${esc(t.opts[oi])}</button>`; }).join('')}</div>`;
   } else if (t.t === 'fill') {
     const parts = t.code.split('___'); let html = '';
-    parts.forEach((p, i) => { html += hl(p, lang); if (i < parts.length - 1) { const v = A.vals ? A.vals[i] : ''; const w = Math.max(3, ...t.ans[i].map(a => a.length)) + 1;
+    parts.forEach((p, i) => { html += hl(p, lang); if (i < parts.length - 1) { const v = A.vals ? A.vals[i] : ''; const w = Math.max(3, (t.answ || [])[i] || 3) + 1;
       html += `<input class="blank ${A.res ? (A.res[i] ? 'okb' : 'badb') : ''}" data-blank="${i}" style="width:${w + 1}ch" value="${esc(v || '')}" autocapitalize="off" autocomplete="off" spellcheck="false" ${A.right ? 'disabled' : ''}>`; } });
     const lines = html.split('\n');
     h += `<div class="code"><div class="code-head">${fileIco(fn)} <span>${fn}</span></div><div class="code-body"><div class="gutter">${lines.map((_, i) => `<div>${i + 1}</div>`).join('')}</div><div class="lines">${lines.map(l => `<div class="ln">${l || ' '}</div>`).join('')}</div></div></div>`;
@@ -436,25 +442,25 @@ function taskView(t, ts) {
     else h += `<div class="pybox l">${tr('logicBug')}${t.got !== undefined ? `<br>${tr('prints')} <code>${esc(t.got).replace(/\n/g, ' ⏎ ')}</code>` : ''}</div>`;
     if (t.inp) h += `<div class="muted" style="font-size:12px">⌨️ stdin: <code>${esc(t.inp.replace(/\n/g, ' ⏎ '))}</code></div>`;
     h += `<div class="muted" style="font-size:13px">${tr('clickLine')}</div>`;
-    h += codeBlock(t.code, { title: fn, cls: 'bug', lang }).replace(/<div class="ln" data-ln="(\d+)">/g, (m, n) => `<div class="ln ${A.right && +n === t.line ? 'right' : (A.wrong || []).includes(+n) ? 'wrong' : ''}" data-ln="${n}" data-act="${A.right ? '' : 'bugline'}" data-a="${n}">`);
+    h += codeBlock(t.code, { title: fn, cls: 'bug', lang }).replace(/<div class="ln" data-ln="(\d+)">/g, (m, n) => `<div class="ln ${A.right && Seal.h(t.id, +n) === t.lh ? 'right' : (A.wrong || []).includes(+n) ? 'wrong' : ''}" data-ln="${n}" data-act="${A.right ? '' : 'bugline'}" data-a="${n}">`);
   } else if (t.t === 'code' && t.wpf) {
     const files = S.drafts[t.id] && typeof S.drafts[t.id] === 'object' ? S.drafts[t.id] : Object.assign({}, t.start);
     const cur = A.ftab || Object.keys(files)[0]; A.ftab = cur;
     h += `<div class="code">${fileTabs('task', files, cur, true)}<div class="code-head">${fileIco(cur)} <span>${esc(cur)}</span><span class="sp"></span><button class="btn sm ghost" data-act="resetcode">${tr('reset')}</button></div>${editorHtml('ed', files[cur], 10, /\.xaml$/.test(cur) ? 'xaml' : 'cs')}</div>`;
     h += `<div class="row-btns"><button class="btn" data-act="runcode" style="color:var(--ok)">${tr('run')}</button><button class="btn pri" data-act="checkcode" ${A.busy ? 'disabled' : ''}>${tr('check')}</button>${t.hint ? `<button class="btn ghost" data-act="hint">${tr('hint')}</button>` : ''}${((S.done[t.id] && S.done[t.id].tries >= 2) || done) ? `<button class="btn ghost" data-act="showsol">${tr('showSol')}</button>` : ''}</div>`;
     if (A.hint) h += `<div class="pybox l">💡 ${t.hint}</div>`;
-    if (A.sol) h += `<h3>${tr('solution')}</h3>` + Object.keys(t.sol).map(f => codeBlock(t.sol[f], { title: f, lang: /\.xaml$/.test(f) ? 'xaml' : 'cs' })).join('');
+    if (A.sol) h += `<h3>${tr('solution')}</h3>` + Object.keys(sec(t).sol).map(f => codeBlock(sec(t).sol[f], { title: f, lang: /\.xaml$/.test(f) ? 'xaml' : 'cs' })).join('');
     if (A.run) h += wpfPanel('task', files);
     if (A.checkMsg) h += `<div class="tests"><div class="trow ${A.checkOk ? 'okt' : 'badt'}">${A.checkOk ? '✅ ' + tr('allOk') : '❌ ' + A.checkMsg}</div></div>`;
   } else if (t.t === 'code') {
     const draft = S.drafts[t.id] !== undefined && typeof S.drafts[t.id] === 'string' ? S.drafts[t.id] : t.start;
     const sample = (t.tests[0] && t.tests[0].i) || '';
     h += `<div class="code"><div class="code-head">${fileIco('Program.cs')} <span>Program.cs</span><span class="sp"></span><button class="btn sm ghost" data-act="resetcode">${tr('reset')}</button></div>${editorHtml('ed', draft, 8)}</div>`;
-    if (sample || /ReadLine/.test(t.sol)) h += `<label class="lbl">⌨️ ${tr('stdin')}</label><textarea class="stdin" id="stdin" placeholder="${esc(tr('stdinPh'))}">${esc(A.stdin !== undefined ? A.stdin : sample)}</textarea>`;
+    if (sample || t.rl) h += `<label class="lbl">⌨️ ${tr('stdin')}</label><textarea class="stdin" id="stdin" placeholder="${esc(tr('stdinPh'))}">${esc(A.stdin !== undefined ? A.stdin : sample)}</textarea>`;
     if (t.files) h += `<div class="muted" style="font-size:12px">📁 ${Object.keys(t.files).map(esc).join(', ')}</div>`;
     h += `<div class="row-btns"><button class="btn" data-act="runcode" style="color:var(--ok)">${tr('run')}</button><button class="btn pri" data-act="checkcode" ${A.busy ? 'disabled' : ''}>${tr('check')}</button>${t.hint ? `<button class="btn ghost" data-act="hint">${tr('hint')}</button>` : ''}${((S.done[t.id] && S.done[t.id].tries >= 2) || done) ? `<button class="btn ghost" data-act="showsol">${tr('showSol')}</button>` : ''}</div>`;
     if (A.hint) h += `<div class="pybox l">💡 ${t.hint}</div>`;
-    if (A.sol) h += `<h3>${tr('solution')}</h3>` + codeBlock(t.sol, { title: 'Program.cs' });
+    if (A.sol) h += `<h3>${tr('solution')}</h3>` + codeBlock(sec(t).sol, { title: 'Program.cs' });
     if (A.run) h += runWin('Program.cs', A.run);
     if (A.tests) h += `<div class="tests">${A.tests.map((r, i) => `<div class="trow ${r.ok ? 'okt' : 'badt'}">${r.ok ? '✅' : '❌'} ${tr('test', { i: i + 1 })} ${r.ok ? tr('testOk') : ''}${r.ok ? '' : `${r.i ? `<pre>${tr('input')}:\n${esc(r.i)}</pre>` : ''}${r.err ? `<pre class="err" style="color:var(--bad)">${esc(r.err)}${r.line ? ` (${tr('lineN', { n: r.line })})` : ''}</pre>${errHint(r.etype)}` : r.checkfail ? `<pre>${tr('checkFail')} ${esc(r.checkfail)}</pre>` : `<pre>${tr('expected')}:\n${esc(r.o)}\n${tr('got')}:\n${esc(r.got) || tr('noOut')}</pre>`}`}</div>`).join('')}</div>`;
   }
@@ -464,7 +470,7 @@ function taskView(t, ts) {
   return h + '</div>';
 }
 function feedback(t, A) {
-  return `<div class="fb good"><div class="big">🎉 ${A.praise || ''} ${A.xp ? `<span class="xpfly">+${A.xp} XP</span>` : ''}</div>${t.why ? `<div><b>${tr('why')}</b> ${t.why}</div>` : ''}${t.t === 'bug' && t.fix ? `<div style="margin-top:6px"><b>${tr('fixIs')}</b> <code>${esc(t.fix)}</code></div>` : ''}
+  return `<div class="fb good"><div class="big">🎉 ${A.praise || ''} ${A.xp ? `<span class="xpfly">+${A.xp} XP</span>` : ''}</div>${sec(t).why ? `<div><b>${tr('why')}</b> ${sec(t).why}</div>` : ''}${t.t === 'bug' && sec(t).fix ? `<div style="margin-top:6px"><b>${tr('fixIs')}</b> <code>${esc(sec(t).fix)}</code></div>` : ''}
 <div class="row-btns"><button class="btn pri" data-act="nexttask">${V.ti === stageTasks(course()[V.ci].lessons[V.li]).length - 1 ? tr('finish') : tr('next')}</button></div></div>`;
 }
 function keysBar(lang) { const k = lang === 'xaml' ? ['⇥', '<', '/>', '>', '"', '=', '{', '}', ':', '.'] : ['⇥', ';', '{', '}', '(', ')', '"', '[', ']', '=', '+', '<', '>', '.', '$', '\'']; return `<div class="keys">${k.map(x => `<button data-key="${esc(x)}">${esc(x)}</button>`).join('')}</div>`; }
@@ -582,7 +588,7 @@ document.addEventListener('click', async e => {
     case 'mode': S.mode = S.mode === 'dark' ? 'light' : 'dark'; save(); render(); break;
     case 'settings': SETTAB = 'look'; settingsModal(); break;
     case 'settab': SETTAB = a; settingsModal(); break;
-    case 'setstage': S.stage = +a; save(); if (S.onboarded) { settingsModal(); render(); } else render(); break;
+    case 'setstage': S.stage = normStage(a); save(); if (S.onboarded) { settingsModal(); render(); } else render(); break;
     case 'settheme': S.theme = a; save(); render(); if (S.onboarded && document.getElementById('ov')) settingsModal(); break;
     case 'setide': S.ide = a; save(); render(); if (S.onboarded && document.getElementById('ov')) settingsModal(); break;
     case 'startapp': S.name = (document.getElementById('ob-name').value || '').trim() || 'Kapi'; S.cls = (document.getElementById('ob-cls').value || '').trim(); S.onboarded = true; S.created = Date.now(); touchStreak(); save(); confetti(); render(); kapiSay(tr('hello', { name: esc(S.name) }) + ' <i class="cpy"></i>'); break;
@@ -615,7 +621,7 @@ document.addEventListener('click', async e => {
     case 'tryex': { const L = C[V.ci].lessons[V.li]; const ex = L.ex.filter(x => !x.lvl || x.lvl <= S.stage)[+a]; if (ex.wpf) { SB.mode = 'wpf'; SB.files = Object.assign({}, ex.wpf); SB.ftab = Object.keys(ex.wpf)[0]; SB.wpfRun = false; } else { SB.mode = 'console'; SB.code = ex.code; SB.stdin = ex.inp || ''; SB.run = null; } go('sandbox'); break; }
     case 'quiz': quizAnswer(+a); break;
     case 'checkfill': fillCheck(); break;
-    case 'revealfill': { const t = curTask(); reveal(t); const A = V.ans[t.id]; A.vals = t.ans.map(x => x[0]); A.res = null; renderMain(); break; }
+    case 'revealfill': { const t = curTask(); reveal(t); const A = V.ans[t.id]; A.vals = sec(t).ans.map(x => x[0]); A.res = null; renderMain(); break; }
     case 'bugline': bugAnswer(+a); break;
     case 'runcode': codeRun(); break;
     case 'checkcode': codeCheck(); break;
@@ -693,23 +699,23 @@ function afterRender() {
 
 /* ===== answer handlers ===== */
 function good(t, A) { A.xp = award(t); A.right = true; A.praise = pick(tr('correct')); kapiSay(`<b>${A.praise}</b>${A.xp ? ` +${A.xp} XP` : ''}`, 'happy'); if (A.xp) confetti(25); }
-function bad(t, A, msg) { fail(t); A.badMsg = msg || pick(tr('wrong')); kapiSay(A.badMsg + (t.why && (S.done[t.id].tries >= 2) ? '<br><small>' + t.why + '</small>' : ''), 'sad'); }
+function bad(t, A, msg) { fail(t); A.badMsg = msg || pick(tr('wrong')); kapiSay(A.badMsg + (sec(t).why && (S.done[t.id].tries >= 2) ? '<br><small>' + sec(t).why + '</small>' : ''), 'sad'); }
 function quizAnswer(oi) {
   const t = curTask(), A = V.ans[t.id];
-  if (oi === t.a) { A.badMsg = null; good(t, A); } else { A.wrong = (A.wrong || []).concat(oi); bad(t, A); }
+  if (isRightOpt(t, oi)) { A.badMsg = null; good(t, A); } else { A.wrong = (A.wrong || []).concat(oi); bad(t, A); }
   renderMain();
 }
 const nrm = s => (s || '').replace(/\s+/g, '').replace(/'/g, '"');
 function fillCheck() {
   const t = curTask(), A = V.ans[t.id];
   document.querySelectorAll('.blank').forEach(b => { A.vals = A.vals || []; A.vals[+b.dataset.blank] = b.value; });
-  A.res = t.ans.map((acc, i) => acc.some(x => nrm(x) === nrm((A.vals || [])[i])));
+  A.res = t.ansh.map((acc, i) => acc.includes(Seal.h(t.id + '#' + i, Seal.nrm((A.vals || [])[i]))));
   if (A.res.every(Boolean)) { A.badMsg = null; good(t, A); } else bad(t, A);
   renderMain();
 }
 function bugAnswer(n) {
   const t = curTask(), A = V.ans[t.id];
-  if (n === t.line) { A.badMsg = null; good(t, A); } else { A.wrong = (A.wrong || []).concat(n); bad(t, A); }
+  if (Seal.h(t.id, n) === t.lh) { A.badMsg = null; good(t, A); } else { A.wrong = (A.wrong || []).concat(n); bad(t, A); }
   renderMain();
 }
 function runTests(t, code) {
@@ -738,14 +744,14 @@ function codeCheck() {
     const files = curFiles(t);
     let msg = WPFCheck(t, files);
     A.checkOk = !msg; A.checkMsg = msg || 'ok';
-    if (!msg) { A.badMsg = null; good(t, A); A.praise = tr('allOk') + ' ' + A.praise; } else bad(t, A);
+    if (!msg) { A.badMsg = null; S.proofs = S.proofs || {}; S.proofs[t.id] = Object.assign({}, files); good(t, A); A.praise = tr('allOk') + ' ' + A.praise; } else bad(t, A);
     renderMain(); return;
   }
   const code = document.getElementById('ed').value; S.drafts[t.id] = code;
   A.busy = true; A.run = { loading: true }; A.tests = null; renderMain();
   setTimeout(() => {
     try { const res = runTests(t, code); A.tests = res; A.run = null; A.busy = false;
-      if (res.every(x => x.ok)) { A.badMsg = null; good(t, A); A.praise = tr('allOk') + ' ' + A.praise; } else bad(t, A);
+      if (res.every(x => x.ok)) { A.badMsg = null; S.proofs = S.proofs || {}; S.proofs[t.id] = code; good(t, A); A.praise = tr('allOk') + ' ' + A.praise; } else bad(t, A);
     } catch (e) { A.busy = false; A.run = null; }
     renderMain();
   }, 30);
@@ -774,7 +780,8 @@ const b64d = s => { s = s.replace(/-/g, '+').replace(/_/g, '/'); while (s.length
 async function zip(b, mode) { const st = mode === 'c' ? new CompressionStream('deflate-raw') : new DecompressionStream('deflate-raw'); return new Uint8Array(await new Response(new Blob([b]).stream().pipeThrough(st)).arrayBuffer()); }
 function payload() {
   const done = {}; for (const id in S.done) { const d = S.done[id]; done[id] = [d.ok ? 1 : 0, d.first ? 1 : 0, d.tries || 0]; }
-  return { app: 'cskapi', v: 1, name: S.name, cls: S.cls, stage: S.stage, xp: S.xp, done, stars: S.stars, badges: Object.keys(S.badges), streak: S.streak.n, bestCombo: S.bestCombo, codeRuns: S.codeRuns, created: S.created, ts: Date.now(), lang: S.lang, theme: S.theme, ide: S.ide };
+  const proof = {}; for (const id in (S.proofs || {})) if (S.done[id] && S.done[id].ok) proof[id] = S.proofs[id];
+  return { app: 'cskapi', v: 1, name: S.name, cls: S.cls, stage: S.stage, xp: S.xp, done, stars: S.stars, badges: Object.keys(S.badges), streak: S.streak.n, bestCombo: S.bestCombo, codeRuns: S.codeRuns, proof, created: S.created, ts: Date.now(), lang: S.lang, theme: S.theme, ide: S.ide };
 }
 async function encodeProgress(obj) {
   const json = JSON.stringify(obj); const sum = fnv(SALT + json); let bytes = new TextEncoder().encode(json); let fl = 'p';
@@ -824,8 +831,8 @@ async function importStudentText(text) {
   let o; try { o = await decodeProgress(text); } catch (e) { toast('⚠️ ' + tr('badCode')); return; }
   confirmBox(tr('impQ', { name: esc(o.name), xp: o.xp }), () => {
     const done = {}; for (const id in o.done) { const d = o.done[id]; done[id] = { ok: d[0], first: d[1], tries: d[2] }; }
-    Object.assign(S, { name: o.name, cls: o.cls || '', stage: o.stage, xp: o.xp, done, stars: o.stars || {}, bestCombo: o.bestCombo || 0, codeRuns: o.codeRuns || 0, onboarded: true });
-    S.badges = {}; (o.badges || []).forEach(b => S.badges[b] = Date.now()); S.streak = { last: todayStr(), n: o.streak || 1 };
+    Object.assign(S, { name: o.name, cls: o.cls || '', stage: normStage(o.stage), xp: o.xp, done, stars: o.stars || {}, bestCombo: o.bestCombo || 0, codeRuns: o.codeRuns || 0, onboarded: true });
+    S.proofs = o.proof || {}; S.badges = {}; (o.badges || []).forEach(b => S.badges[b] = Date.now()); S.streak = { last: todayStr(), n: o.streak || 1 };
     save(); render(); confetti(); toast('✔ ' + tr('impOk'));
   });
 }

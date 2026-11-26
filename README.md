@@ -36,7 +36,8 @@ js/
   cs/check.js               ← analiza statyczna (CS0103, CS0161, CS0128, CS0246…)
   wpf.js                    ← KapiWPF: parser XAML, kontrolki, binding, style, zdarzenia, animacje, 3D, strony
   wpf-render.js             ← KapiWPF: rysowanie okien w HTML/SVG/canvas
-  data/course.js            ← WYGENEROWANE przez tools/build.js (lekcje PL+EN) – nie edytuj ręcznie
+  data/course.js            ← WYGENEROWANE przez tools/build.js (lekcje PL+EN, odpowiedzi zaplombowane) – nie edytuj ręcznie
+  seal.js                   ← „plomba” na odpowiedzi: skróty do sprawdzania + zakodowane teksty (też w build.js)
   i18n.js                   ← teksty interfejsu PL/EN, nazwy poziomów w klimatach, odznaki, podpowiedzi do błędów
   scenes.js                 ← kapibara (SVG) w kapeluszach klimatów i animowane sceny do przykładów
   app.js                    ← stan, XP/poziomy/odznaki, widoki IDE, edytor, zadania, piaskownica, eksport postępu
@@ -86,7 +87,7 @@ node tools/build.js --pl      # sprawdza tylko wersję polską (szybciej przy pi
 - rozwiązanie wzorcowe przechodzi wszystkie testy, a kod startowy ich NIE przechodzi,
 - okna WPF się uruchamiają, a skrypty `ui` (klikanie, wpisywanie, suwaki, klawisze, zegar) przechodzą dla rozwiązania.
 
-Wyniki przykładów i komunikaty błędów (w stylu `Program.cs(5,9): error CS0103: …`) są dopisywane automatycznie.
+Wyniki przykładów i komunikaty błędów (w stylu `Program.cs(5,9): error CS0103: …`) są dopisywane automatycznie. Build zgłasza błąd, jeśli do danych trafiłby wewnętrzny błąd interpretera albo pusta odpowiedź quizu. Na końcu odpowiedzi są plombowane (patrz „Bezpieczeństwo”) i sprawdzane, czy plomba się poprawnie otwiera.
 
 ### Rozdział
 
@@ -166,9 +167,22 @@ Ograniczenie: gdy w metodzie pojawi się `MessageBox` z Tak/Nie albo `ShowDialog
 ## Postęp ucznia i panel nauczyciela
 
 - Postęp zapisuje się w `localStorage` przeglądarki (klucz `cskapi-v1`, panel nauczyciela `cskapi-teacher-v1`).
-- **Mój postęp** eksportuje zakodowany plik `.txt` (format `CSKAPI1.<z|p>.<suma>.<dane>`): JSON → deflate → XOR → base64url + suma kontrolna FNV. Chroni to przed przypadkową lub ręczną edycją, ale nie jest kryptograficznym zabezpieczeniem.
-- **Panel nauczyciela** (PIN zapisany lokalnie jako skrót): import wielu plików lub kodów, tabela klasy, mapa postępu w rozdziałach, efekty kształcenia, najtrudniejsze zadania, szczegóły ucznia, eksport CSV.
+- **Mój postęp** eksportuje zakodowany plik `.txt` (format `CSKAPI1.<z|p>.<suma>.<dane>`): JSON → deflate → XOR → base64url + suma kontrolna FNV. Plik zawiera też **kod rozwiązań** zadań programistycznych (pole `proof`).
+- **Panel nauczyciela**: import wielu plików lub kodów, tabela klasy, mapa postępu w rozdziałach, efekty kształcenia, najtrudniejsze zadania, szczegóły ucznia, eksport CSV oraz kolumna 🛡️ **Wiarygodność postępu** (patrz niżej).
+- PIN nauczyciela: min. 6 cyfr, zapisany jako PBKDF2-SHA256 (250 000 iteracji, losowa sól); po 5 błędnych próbach rośnie czas oczekiwania (30 s, 60 s, … do 1 h). Stare PIN-y (4 cyfry, stary skrót) działają i są przepisywane na nowy format przy pierwszym logowaniu.
 - ⚠️ Nie zmieniaj `SALT` ani formatu `payload()` w `js/app.js`, bo stare pliki uczniów przestaną się wczytywać.
+
+## Bezpieczeństwo – co chroni, a czego nie
+
+Aplikacja to statyczna strona (GitHub Pages, bez serwera). Wszystko, co sprawdza odpowiedzi, działa na urządzeniu ucznia, więc **zdeterminowany uczeń zawsze może to obejść**. Zabezpieczenia podnoszą koszt oszukiwania i pozwalają nauczycielowi wyłapać fałszerstwa:
+
+| zagrożenie | co jest zrobione | co zostaje |
+|---|---|---|
+| podgląd odpowiedzi w konsoli / kodzie strony | dane kursu nie są w `window`; pola `a`, `ans`, `line`, `sol`, `fix`, `why`, `expect` są usuwane przy budowaniu. Aplikacja sprawdza odpowiedź przez porównanie skrótu (`ah`, `ansh`, `lh`), a teksty pokazywane po odpowiedzi są zaplombowane (`x`, `js/seal.js`). Kolejność opcji quizu jest wymieszana | klucz do plomby jest w stronie – to zaciemnienie, nie szyfrowanie |
+| sfałszowany plik postępu | panel liczy górną granicę XP z zaliczonych zadań, wykrywa nieznane zadania i brak rozwiązań, a „Sprawdź rozwiązania” uruchamia kod ucznia na testach (konsola i WPF) | quizy, luki i „znajdź błąd” nie mają dowodu – da się je oznaczyć jako zaliczone |
+| odgadnięcie PIN-u | PBKDF2 + rosnące opóźnienie | PIN chroni tylko widok na tym komputerze; ktoś z dostępem do przeglądarki nauczyciela może odczytać dane |
+
+Pełna ochrona wymaga serwera: odpowiedzi tylko na serwerze (sprawdzanie przez API), postęp zapisywany i podpisywany po stronie serwera (np. HMAC) oraz logowanie nauczyciela z limitem prób. To zmiana architektury (hosting, konta uczniów, RODO) – osobny etap.
 
 ## Jeden plik
 

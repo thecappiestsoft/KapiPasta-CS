@@ -22,6 +22,8 @@ class Tup { constructor(items) { this.items = items; } }
 class Ref { constructor(get, set, type) { this.get = get; this.set = set; this.type = type; } }
 class CsThrow { constructor(ex, line) { this.ex = ex; this.line = line; } }
 class Timeout { }
+function isStackErr(e) { return e instanceof RangeError && typeof e.message === 'string' && e.message.indexOf('call stack') >= 0; }
+CS.isStackErr = isStackErr;
 class StackOverflow { constructor(line) { this.line = line; } }
 class Exit { }
 Object.assign(CS, { N, Obj, Arr, Coll, EnumVal, KVP, Fn, MRef, Multi, TypeVal, TypeObj, NS, Tup, Ref, CsThrow, Timeout, StackOverflow, Exit });
@@ -633,7 +635,7 @@ class Interp {
           res = this.execBlock(s.body.stmts, fr);
         } catch (e) {
           if (!(e instanceof CsThrow)) {
-            if (e instanceof RangeError && /call stack/i.test(e.message)) throw new StackOverflow(this.line);
+            if (isStackErr(e)) throw new StackOverflow(this.line);
             throw e;
           }
           let handled = false;
@@ -1182,7 +1184,7 @@ class Interp {
       if (m.ret && m.ret.n === 'void') r = undefined;
       return r;
     } catch (e) {
-      if (e instanceof RangeError && /call stack/i.test(e.message)) throw new StackOverflow(nd ? nd.line : this.line);
+      if (isStackErr(e)) throw new StackOverflow(nd ? nd.line : this.line);
       throw e;
     } finally { this.depth--; this.line = saveLine; }
   }

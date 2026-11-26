@@ -92,7 +92,7 @@ while (n < 3)
 {
     Console.WriteLine("Hey");
 }`, opts: ['0', '1', '3', 'infinitely many'], why: 'The condition 5 < 3 is false from the start – while does not run even once.' },
-   { q: 'What will the program print?', why: 'do-while runs at least once, then the condition 6 < 3 ends the loop.' },
+   { q: 'What will the program print?', opts: ['5', '(nothing is printed)', '56', '345'], why: 'do-while runs at least once, then the condition 6 < 3 ends the loop.' },
    { q: 'The loop never ends (the program runs too long). Click the line that has to be fixed.', why: 'The counter decreases, so i < 5 is always true. You must increase it: i++.' },
    { q: 'Read a natural number and print the <b>sum of its digits</b>. E.g. for 4096: 19. Use a <code>while</code> loop and the <code>%</code> and <code>/</code> operators.', check: "if (!/while/.test(src)) return 'Use a while loop';", sol: c`int n = int.Parse(Console.ReadLine());
 int sum = 0;

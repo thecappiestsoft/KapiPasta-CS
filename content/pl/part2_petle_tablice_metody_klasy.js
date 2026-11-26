@@ -117,7 +117,7 @@ do
 {
     Console.Write(n);
     n++;
-} while (n < 3);`, opts: ['5', '', '56', '345'], a: 0, out: true, why: 'do-while wykonuje się co najmniej raz, potem warunek 6 < 3 kończy pętlę.' },
+} while (n < 3);`, opts: ['5', '(nic się nie wypisze)', '56', '345'], a: 0, out: true, why: 'do-while wykonuje się co najmniej raz, potem warunek 6 < 3 kończy pętlę.' },
    { t: 'bug', l: 2, q: 'Pętla nigdy się nie kończy (program działa za długo). Kliknij linię, którą trzeba poprawić.', code: c`int i = 0;
 while (i < 5)
 {
