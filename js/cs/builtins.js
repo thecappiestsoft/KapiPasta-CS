@@ -840,7 +840,7 @@ CS.classify = function (e, res, it) {
   }
   if (e instanceof CS.Exit) return;
   if (e instanceof CS.Timeout) { res.kind = 'timeout'; res.etype = 'Timeout'; res.err = 'Timeout'; return; }
-  if (e instanceof CS.StackOverflow || (e instanceof RangeError && /call stack/i.test(e.message))) { res.kind = 'runtime'; res.etype = 'StackOverflowException'; res.line = e.line || null; res.err = 'Stack overflow.'; res.msg = 'Stack overflow.'; return; }
+  if (e instanceof CS.StackOverflow || CS.isStackErr(e)) { res.kind = 'runtime'; res.etype = 'StackOverflowException'; res.line = e.line || null; res.err = 'Stack overflow.'; res.msg = 'Stack overflow.'; return; }
   res.kind = 'internal'; res.etype = 'InternalError'; res.err = 'KapiSharp internal error: ' + (e && e.stack ? e.stack.split('\n').slice(0, 3).join(' | ') : String(e));
 };
 })(typeof window !== 'undefined' ? window : globalThis);
