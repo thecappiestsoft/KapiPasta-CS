@@ -1,6 +1,6 @@
 /* ================= KapiPasta - C# ================= */
 const LS = 'cskapi-v1', LST = 'cskapi-teacher-v1';
-const DEF = { onboarded: false, name: '', cls: '', stage: 1, theme: 'pirate', ide: 'vs', mode: null, lang: 'pl', sound: true, unlockAll: false,
+const DEF = { onboarded: false, name: '', cls: '', stage: 1, theme: 'pirate', ide: 'vs', mode: null, lang: 'pl', sound: true, unlockAll: false, unlockedCh: [],
   xp: 0, done: {}, stars: {}, badges: {}, streak: { last: '', n: 0 }, today: { d: '', xp: 0 }, combo: 0, bestCombo: 0, codeRuns: 0, sbRuns: 0, drafts: {}, proofs: {}, time: {}, away: {}, created: 0, lastSeen: 0 };
 function lsGet(k) { try { return JSON.parse(localStorage.getItem(k)); } catch (e) { return null; } }
 function lsSet(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); } catch (e) { } }
@@ -80,7 +80,20 @@ function lessonProg(L) { const ts = stageTasks(L); const d = ts.filter(t => S.do
 function chapStars(ch) { const ts = ch.lessons.flatMap(L => stageTasks(L)); const st = starsFor(ts, S.done); return st.d ? st : null; }
 function chapGradeHtml(ch, withNum) { const st = chapStars(ch); if (!st) return ''; return `<span class="stars ${st.grade === 6 ? 'max' : ''}" title="${esc(tr('chapGradeTip', { g: st.grade, d: st.d, n: st.n, p: Math.round(st.d / st.n * 100) }))}">${starRow(st.grade)}${withNum ? ` <b class="gnum">${st.grade}</b>` : ''}${st.perfect ? perfectIco() : ''}</span>`; }
 function chapProg(ch) { let d = 0, n = 0; ch.lessons.forEach(L => { const p = lessonProg(L); d += p.d; n += p.n; }); return { d, n, p: n ? d / n : 0 }; }
-function unlocked(ci) { if (ci === 0 || S.unlockAll) return true; return chapProg(course()[ci - 1]).p >= 0.5; }
+/* unlock codes from the teacher: KAPI-<chapters as a base36 bit mask>-<check>; a new code replaces the previous one */
+const unlockSum = m => (parseInt(fnv(SALT + '|unlock|' + m), 16) % 1296).toString(36).toUpperCase().padStart(2, '0');
+function makeUnlockCode(indexes) { let m = 0; indexes.forEach(i => { m += 2 ** i; }); const b = m.toString(36).toUpperCase(); return `KAPI-${b}-${unlockSum(b)}`; }
+function parseUnlockCode(code) {
+  const x = String(code || '').trim().toUpperCase().match(/^KAPI-([0-9A-Z]+)-([0-9A-Z]{2})$/); if (!x || unlockSum(x[1]) !== x[2]) return null;
+  const m = parseInt(x[1], 36); const C = course(); return C.map((ch, i) => (Math.floor(m / 2 ** i) % 2 ? ch.id : null)).filter(Boolean);
+}
+function applyUnlockCode(code) {
+  const ids = parseUnlockCode(code); if (!ids) { toast('⚠️ ' + tr('unlockBad')); return false; }
+  S.unlockedCh = ids; save(); render();
+  const names = course().filter(ch => ids.includes(ch.id)).map(ch => chName(ch));
+  toast('🔓 ' + (names.length ? tr('unlockOk', { list: names.join(', ') }) : tr('unlockNone')), 4500); return true;
+}
+function unlocked(ci) { if (ci === 0 || S.unlockAll || (S.unlockedCh || []).includes(course()[ci].id)) return true; return chapProg(course()[ci - 1]).p >= 0.5; }
 const LVT = k => 50 * k * (k + 1);
 function levelOf(xp) { let l = 0; while (xp >= LVT(l + 1)) l++; return { lv: l + 1, cur: xp - LVT(l), need: LVT(l + 1) - LVT(l) }; }
 const lvTitle = lv => W().lv[Math.min(lv - 1, 9)];
@@ -608,7 +621,10 @@ function settingsModal() {
       <div class="switch"><span>${tr('sound')}</span><input type="checkbox" data-set="sound" ${S.sound ? 'checked' : ''}></div>`,
     learn: `<label class="lbl">${tr('yourName')}</label><input class="inp" data-set="name" value="${esc(S.name)}" maxlength="30"><label class="lbl">${tr('yourClass')}</label><input class="inp" data-set="cls" value="${esc(S.cls)}" maxlength="12">
       <h3 style="margin-top:14px">${tr('chooseStage')}</h3><div class="choices">${stageChoices()}</div>
-      <div class="switch"><span>${tr('unlockAll')}</span><input type="checkbox" data-set="unlockAll" ${S.unlockAll ? 'checked' : ''}></div>`,
+      <div class="switch"><span>${tr('unlockAll')}</span><input type="checkbox" data-set="unlockAll" ${S.unlockAll ? 'checked' : ''}></div>
+      <h3 style="margin-top:14px">🔓 ${tr('unlockCode')}</h3><p class="muted" style="font-size:13px">${tr('unlockCodeD')}</p>
+      <div class="row-btns"><input class="inp" id="ucode" placeholder="KAPI-…" style="max-width:200px;text-transform:uppercase" autocomplete="off"><button class="btn pri" data-act="unlockcode">${tr('apply')}</button></div>
+      ${(S.unlockedCh || []).length ? `<p class="muted" style="font-size:13px">${tr('unlockNow')}: ${course().filter(ch => S.unlockedCh.includes(ch.id)).map(ch => esc(chName(ch))).join(', ')}</p>` : ''}`,
     prog: `<div class="row-btns"><button class="btn pri" data-act="progress">💾 ${tr('progress')}</button></div><div class="row-btns"><button class="btn" style="color:var(--bad)" data-act="resetall">🗑️ ${tr('resetProg')}</button></div>`
   };
   modal(`<div class="mh">⚙️ ${tr('settings')}<button class="btn sm ghost" data-act="close">✕</button></div><div class="settings"><nav>${[['look', '🎨 ' + tr('look')], ['learn', '🎓 ' + tr('chooseStage')], ['prog', '💾 ' + tr('progress')]].map(([k, n]) => `<button class="${SETTAB === k ? 'on' : ''}" data-act="settab" data-a="${k}">${n}</button>`).join('')}</nav><section>${sec[SETTAB]}</section></div><div class="mf"><button class="btn pri" data-act="close">${tr('close')}</button></div>`, 'wide');
@@ -640,6 +656,7 @@ document.addEventListener('click', async e => {
     case 'teacherstart': S.onboarded = true; save(); openTeacher(); break;
     case 'fold': V.open[a] = !V.open[a]; document.getElementById('proj').innerHTML = treeHtml(); break;
     case 'locked': beep('bad'); kapiSay('🔒 ' + tr('locked'), 'sad'); break;
+    case 'unlockcode': { const v = (document.getElementById('ucode') || {}).value; if (applyUnlockCode(v)) settingsModal(); break; }
     case 'opench': { const ci = +a; V.open[C[ci].id] = true; const L = C[ci].lessons; let li = L.findIndex(x => { const p = lessonProg(x); return p.d < p.n; }); openLesson(ci, li < 0 ? 0 : li); break; }
     case 'lesson': { const [ci, li] = a.split(':').map(Number); if (!unlocked(ci)) { kapiSay('🔒 ' + tr('locked'), 'sad'); break; } openLesson(ci, li); break; }
     case 'closetab': e.stopPropagation(); V.tabs = V.tabs.filter(x => x !== a); if (V.view === 'lesson' && a === V.ci + ':' + V.li) V.view = 'welcome'; render(); break;
@@ -883,4 +900,10 @@ async function importStudentText(text) {
   });
 }
 
-window.addEventListener('DOMContentLoaded', () => { render(); });
+// link from the teacher: …#unlock-KAPI-XXX-YY
+function checkUnlockHash() {
+  const h = decodeURIComponent(location.hash || '').match(/^#unlock-(kapi-[0-9a-z]+-[0-9a-z]{2})$/i);
+  if (h) { applyUnlockCode(h[1]); try { history.replaceState(null, '', location.pathname + location.search); } catch (e) { location.hash = ''; } }
+}
+window.addEventListener('DOMContentLoaded', () => { render(); checkUnlockHash(); });
+window.addEventListener('hashchange', checkUnlockHash);
