@@ -34,11 +34,16 @@ const chName = ch => ch.name[S.theme];
 const projName = (ci, ch) => `${String(ci + 1).padStart(2, '0')}.${slug(ch.name.neutral || ch.name[S.theme])}`;
 
 /* ===== progress math ===== */
-/* stars of a finished lesson: 3 = every task right at the first try, 2 = at least 60%, 1 = the rest */
-function starsFor(ts, done) { const first = ts.filter(t => done[t.id] && done[t.id].first).length; const r = ts.length ? first / ts.length : 1; return { first, n: ts.length, stars: r === 1 ? 3 : r >= .6 ? 2 : 1 }; }
-function lessonStars(L) { const ts = stageTasks(L); if (!ts.length || !ts.every(t => S.done[t.id] && S.done[t.id].ok)) return null; return starsFor(ts, S.done); }
+/* lesson stars show how much is done: ★ from 1/3 of the tasks, ★★ from 2/3, ★★★ = 100%.
+   The capybara in a mortarboard (perfect) = 100% and every task right at the first try. */
+function starsFor(ts, done) {
+  const n = ts.length, d = ts.filter(t => done[t.id] && done[t.id].ok).length, first = ts.filter(t => done[t.id] && done[t.id].ok && done[t.id].first).length;
+  const r = n ? d / n : 1; const stars = r >= 1 ? 3 : r >= 2 / 3 ? 2 : r >= 1 / 3 ? 1 : 0;
+  return { d, n, first, stars, perfect: n > 0 && d === n && first === n };
+}
+function lessonStars(L) { const ts = stageTasks(L); if (!ts.length) return null; const st = starsFor(ts, S.done); return st.d ? st : null; }
 const perfectIco = big => `<i class="cpy-grad ${big ? 'big' : ''}" title="${esc(tr('perfectTip'))}" aria-label="${esc(tr('perfectTip'))}"></i>`;
-function starsHtml(st, big) { const h = `${'★'.repeat(st.stars)}<i>${'☆'.repeat(3 - st.stars)}</i>${st.stars === 3 ? perfectIco() : ''}`; return big ? h : `<span class="stars ${st.stars === 3 ? 'max' : ''}" title="${esc(tr('starsTip', { f: st.first, n: st.n }))}">${h}</span>`; }
+function starsHtml(st, big) { const h = `${'★'.repeat(st.stars)}<i>${'☆'.repeat(3 - st.stars)}</i>${st.perfect ? perfectIco() : ''}`; return big ? h : `<span class="stars ${st.stars === 3 ? 'max' : ''}" title="${esc(tr('starsTip', { d: st.d, n: st.n, f: st.first }))}">${h}</span>`; }
 /* time spent on tasks: counted while the task is on screen and the tab is visible; one stretch counts at most 10 min */
 const TT = { id: null, since: 0 };
 const TT_CAP = 10 * 60 * 1000;
@@ -508,12 +513,12 @@ function feedback(t, A) {
 }
 function keysBar(lang) { const k = lang === 'xaml' ? ['⇥', '<', '/>', '>', '"', '=', '{', '}', ':', '.'] : ['⇥', ';', '{', '}', '(', ')', '"', '[', ']', '=', '+', '<', '>', '.', '$', '\'']; return `<div class="keys">${k.map(x => `<button data-key="${esc(x)}">${esc(x)}</button>`).join('')}</div>`; }
 function doneView(L) {
-  const ts = stageTasks(L); const st = starsFor(ts, S.done), first = st.first, stars = st.stars;
+  const ts = stageTasks(L); const st = starsFor(ts, S.done), first = st.first, stars = st.stars, perfect = st.perfect;
   const secs = ts.reduce((a, t) => a + taskSec(t.id), 0);
   const C = course(); let nxt = null;
   if (V.li + 1 < C[V.ci].lessons.length) nxt = [V.ci, V.li + 1]; else if (V.ci + 1 < C.length && unlocked(V.ci + 1)) nxt = [V.ci + 1, 0];
-  return `<div class="task" style="text-align:center">${capy({ size: 170, mood: 'wow' })}<h1>${tr('done')}</h1><div style="font-size:42px;letter-spacing:4px">${'⭐'.repeat(stars)}${'☆'.repeat(3 - stars)}${stars === 3 ? perfectIco(true) : ''}</div>${stars === 3 ? `<p style="font-weight:700;margin:4px 0">🎓 ${tr('perfectTip')}</p>` : ''}
-<p class="muted">${tr('accuracy')}: ${first}/${ts.length} · ⏱ ${tr('timeSpent')}: ${fmtDur(secs)}</p>${stars < 3 ? `<p class="muted" style="font-size:13px">${tr('starsHow')}</p>` : ''}<div class="row-btns" style="justify-content:center">${nxt ? `<button class="btn pri" data-act="lesson" data-a="${nxt[0]}:${nxt[1]}">${tr('nextLesson')}</button>` : ''}<button class="btn" data-act="go" data-a="welcome">${tr('backMap')}</button><button class="btn ghost" data-act="gotask" data-a="0">${tr('again')}</button></div></div>`;
+  return `<div class="task" style="text-align:center">${capy({ size: 170, mood: 'wow' })}<h1>${tr('done')}</h1><div style="font-size:42px;letter-spacing:4px">${'⭐'.repeat(stars)}${'☆'.repeat(3 - stars)}${perfect ? perfectIco(true) : ''}</div>${perfect ? `<p style="font-weight:700;margin:4px 0">🎓 ${tr('perfectTip')}</p>` : ''}
+<p class="muted">${tr('accuracy')}: ${first}/${ts.length} · ⏱ ${tr('timeSpent')}: ${fmtDur(secs)}</p>${!perfect ? `<p class="muted" style="font-size:13px">${tr('starsHow')}</p>` : ''}<div class="row-btns" style="justify-content:center">${nxt ? `<button class="btn pri" data-act="lesson" data-a="${nxt[0]}:${nxt[1]}">${tr('nextLesson')}</button>` : ''}<button class="btn" data-act="go" data-a="welcome">${tr('backMap')}</button><button class="btn ghost" data-act="gotask" data-a="0">${tr('again')}</button></div></div>`;
 }
 function finishLesson() {
   const L = course()[V.ci].lessons[V.li], ts = stageTasks(L);
