@@ -154,7 +154,7 @@ for (const { lessonId, tasks } of EXTRA) {
 }
 /* every chapter: 15 basic + 15 intermediate + 10 advanced tasks (40) – so a chapter grade 1-6 is easy to read */
 const PER_LEVEL = [15, 15, 10];
-if (process.argv.includes('--counts') || process.env.KAPI_COUNTS) for (const ch of PL) { const c = [0, 0, 0]; ch.lessons.forEach(L => L.tasks.forEach(t => c[t.l - 1]++)); if (c.join() !== PER_LEVEL.join()) P(ch.id, `tasks per level ${c.join('/')} (expected ${PER_LEVEL.join('/')})`); }
+for (const ch of PL) { const c = [0, 0, 0]; ch.lessons.forEach(L => L.tasks.forEach(t => c[t.l - 1]++)); if (c.join() !== PER_LEVEL.join()) P(ch.id, `tasks per level ${c.join('/')} (expected ${PER_LEVEL.join('/')})`); }
 lang = 'pl'; verify(PL);
 const hasEN = fs.readdirSync(path.join(ROOT, 'content', 'en')).some(f => f.endsWith('.js'));
 let EN = [];

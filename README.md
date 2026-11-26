@@ -1,6 +1,6 @@
 # KapiPasta - C# 🦫
 
-Aplikacja do nauki C# i WPF z grywalizacją i kapibarą Kapi. Wygląda jak IDE – do wyboru **Visual Studio** albo **Visual Studio Code** – ma 15 rozdziałów, 48 lekcji i 295 zadań (PL + EN). Kod uczniów uruchamia się naprawdę, w przeglądarce, przez własny interpreter **KapiSharp**, a aplikacje okienkowe – przez symulator **KapiWPF** (XAML + code-behind).
+Aplikacja do nauki C# i WPF z grywalizacją i kapibarą Kapi. Wygląda jak IDE – do wyboru **Visual Studio** albo **Visual Studio Code** – ma 15 działów, 50 lekcji i 600 zadań (PL + EN). Kod uczniów uruchamia się naprawdę, w przeglądarce, przez własny interpreter **KapiSharp**, a aplikacje okienkowe – przez symulator **KapiWPF** (XAML + code-behind).
 
 Siostrzana aplikacja: **KapiPasta - Python** (ta sama kapibara, ten sam system XP, odznak i panelu nauczyciela).
 
@@ -13,6 +13,7 @@ To statyczna strona: bez serwera, bez bazy i bez kroku budowania w przeglądarce
 ## Co jest w środku
 
 - **Etapy nauki:** 🌱 Odkrywca, 🚀 Praktyk, 🏆 Mistrz – uczeń widzi zadania do wybranego poziomu.
+- **40 zadań w każdym dziale:** 15 podstawowych + 15 średnich + 10 zaawansowanych. Odkrywca rozwiązuje 15, Praktyk 30, Mistrz 40 – i z tego dostaje **ocenę działu 1–6** (patrz niżej).
 - **Klimaty grywalizacji:** 🏴‍☠️ Piraci, 🍝 Kuchnia KapiPasta, 🦸 Superbohaterowie (nazwy rozdziałów, poziomów, kapelusz Kapi, dekoracje).
 - **Wygląd IDE:** Visual Studio (menu, pasek narzędzi z ▶ KapiPasta, Eksplorator rozwiązań, Lista błędów, Konsola debugowania) albo VS Code (pasek aktywności, Eksplorator, Terminal, niebieski pasek stanu). Jasny/ciemny motyw – przełącznik z samymi ikonami.
 - **Typy zadań:** quiz „co wypisze program” (opcje sprawdzone przez uruchomienie kodu), uzupełnianie luk, znajdowanie błędu (kliknięcie linii), pisanie kodu z testami, zadania WPF (okno sprawdzane automatycznie).
@@ -47,6 +48,7 @@ content/
   pl/part2_….js             ← rozdziały 5–8
   pl/part3_….js             ← rozdziały 9–12
   pl/part4_wpf.js           ← rozdziały 13–15 (WPF)
+  pl/part5_*.js             ← zadania dodatkowe do wszystkich działów (PL + EN w jednym pliku) i nowe lekcje
   en/part*.js               ← tłumaczenie EN (nadpisuje pola wersji PL)
 tools/
   cs.js                     ← ładuje KapiSharp i KapiWPF w Node (te same pliki co w przeglądarce)
@@ -130,6 +132,20 @@ Każde zadanie ma `t` (typ), `l` (poziom 1–3: Odkrywca / Praktyk / Mistrz) i `
 | `code` | `start`, `tests: [{ i: 'wejście', o: 'oczekiwane wyjście' }]`, `check?` (JS: `src`, `out`, `files`, `input` → tekst błędu albo nic), `files?` (pliki wirtualne), `sol`, `hint` | konsolowe |
 | `code` + `wpf: true` | `start` i `sol` jako `{ 'MainWindow.xaml': …, 'MainWindow.xaml.cs': … }`, `ui` (JS z obiektami `ui`, `app`), `answers?` (np. `{ YesNo: 'Yes' }` dla MessageBox) | `ui.el/has/byType/text/click/type/slide/select/key/mouse/tick/menu` |
 
+### Zadania dodatkowe i nowe lekcje (`content/pl/part5_*.js`)
+
+Zadania dopisywane po publikacji trzymamy osobno – w jednym pliku od razu po polsku i po angielsku:
+
+```js
+X('for', [
+  OUT(1, c`for (int i = 0; i < 4; i++) Console.Write(i);`, ['0123', '1234', '01234', '123'], 'wyjaśnienie PL', 'explanation EN'),
+  QZ(2, 'pytanie PL', 'question EN', ['opcje PL'], ['options EN'] /* albo null, gdy takie same */, 'dlaczego', 'why'),
+  CODE(3, 'treść PL', 'task EN', null /* start = // Twój kod */, [{ i: 'wejście', o: 'wyjście' }], c`rozwiązanie`, 'podpowiedź', 'hint', { en: { /* nadpisania EN */ } }),
+]);
+```
+
+Pomocnicze funkcje są w `part5_00_helpers.js` (`OUT`, `QZ`, `ERR`, `FILL`, `BUG`, `CODE`) i `part5_13_wpf1.js` (`WC`, `XFILL`, `XBUG`; w skryptach `ui` tekst `«pl|en»` daje dwie wersje komunikatu). Nową lekcję na końcu działu dodaje `XL('idDziału', lekcjaPL, nadpisaniaEN)`. `build.js` pilnuje, żeby każdy dział miał dokładnie **15 / 15 / 10** zadań na poziomach 1 / 2 / 3.
+
 ⚠️ **Nie zmieniaj kolejności zadań w opublikowanej lekcji.** ID zadania to `idLekcji-indeks`, więc postęp uczniów jest przypisany do pozycji. Nowe zadania najlepiej dopisywać na końcu lekcji.
 
 ### Sceny z kapibarą (`scene: { s: … }`)
@@ -169,7 +185,8 @@ Ograniczenie: gdy w metodzie pojawi się `MessageBox` z Tak/Nie albo `ShowDialog
 - Postęp zapisuje się w `localStorage` przeglądarki (klucz `cskapi-v1`, panel nauczyciela `cskapi-teacher-v1`).
 - **Mój postęp** eksportuje zakodowany plik `.txt` (format `CSKAPI1.<z|p>.<suma>.<dane>`): JSON → deflate → XOR → base64url + suma kontrolna FNV. Plik zawiera też **kod rozwiązań** zadań programistycznych (pole `proof`).
 - **Czas i wyjścia z aplikacji:** dla każdego zadania zapisuje się czas rozwiązywania (liczony, gdy zadanie jest na ekranie, a karta widoczna; jeden ciągły odcinek liczy się maks. 10 min) oraz liczba wyjść z aplikacji w trakcie zadania (przełączenie karty, inne okno, zminimalizowanie) i czas poza nią. Uczeń widzi to w profilu i dostaje komunikat po powrocie; nauczyciel widzi kolumny ⏱ i 👀 w tabeli klasy, w szczegółach ucznia (per lekcja) i w CSV. W pliku postępu: `done[id] = [ok, za_1_razem, próby, sekundy, wyjścia, sekundy_poza]`. Uwaga: w opublikowanej stronie Claude kliknięcie poza ramką strony też liczy się jako wyjście.
-- **Gwiazdki lekcji** (w eksploratorze): półgwiazdki = oceny szkolne z odsetka zrobionych zadań lekcji – ½★ = 1 (poniżej 30%), ★ = 2 (od 30%), ★½ = 3 (od 50%), ★★ = 4 (od 75%), ★★½ = 5 (od 90%), ★★★ = 6 (100%). Progi są w `GRADE_MIN` w `js/app.js`. **Kapibara w birecie** 🎓 obok trzech gwiazdek = wszystkie zadania za pierwszym razem, bez pomyłek i bez podglądania rozwiązania. Podpowiedź po najechaniu pokazuje ocenę i wynik; nauczyciel widzi ocenę w szczegółach ucznia.
+- **Gwiazdki lekcji i ocena działu** (półgwiazdki = oceny 1–6) liczone z odsetka zrobionych zadań: ½★ = 1 (poniżej 30%), ★ = 2 (od 30%), ★½ = 3 (od 50%), ★★ = 4 (od 75%), ★★½ = 5 (od 90%), ★★★ = 6 (100%). Domyślne progi są w `GRADE_MIN` w `js/app.js`. Ocena działu (z 15/30/40 zadań zależnie od etapu) jest w eksploratorze, na stronie startowej i w profilu. **Kapibara w birecie** 🎓 = wszystkie zadania za pierwszym razem.
+- **Panel nauczyciela – oceny:** tabela klasy pokazuje ocenę każdego działu, szczegóły ucznia – oceny działów i lekcji, CSV – kolumny `chN_%` i `chN_grade`. W sekcji „Progi ocen” nauczyciel może zmienić progi (zapis lokalny; uczniowie widzą skalę domyślną).
 - **Panel nauczyciela**: import wielu plików lub kodów, tabela klasy, mapa postępu w rozdziałach, efekty kształcenia, najtrudniejsze zadania, szczegóły ucznia, eksport CSV oraz kolumna 🛡️ **Wiarygodność postępu** (patrz niżej).
 - PIN nauczyciela: min. 6 cyfr, zapisany jako PBKDF2-SHA256 (250 000 iteracji, losowa sól); po 5 błędnych próbach rośnie czas oczekiwania (30 s, 60 s, … do 1 h). Stare PIN-y (4 cyfry, stary skrót) działają i są przepisywane na nowy format przy pierwszym logowaniu.
 - ⚠️ Nie zmieniaj `SALT` ani formatu `payload()` w `js/app.js`, bo stare pliki uczniów przestaną się wczytywać.

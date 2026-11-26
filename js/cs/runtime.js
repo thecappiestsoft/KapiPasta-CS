@@ -739,6 +739,7 @@ class Interp {
     if (n === 'bool') return typeof v === 'boolean';
     if (NUMS.has(n)) return v instanceof N && v.t === n;
     if (this.enums.has(n)) return v instanceof EnumVal && v.e.name === n;
+    if (v && v.__host && v.__type) { if (v.__type === n) return true; if (this.host && this.host.isType) { const r = this.host.isType(v, n); if (r !== undefined) return r; } }
     const C = this.classes.get(n) || (this.nativeClass && this.nativeClass(n));
     if (C) return v instanceof Obj && this.isSub(v.cls, C);
     if (n === '[]') return v instanceof Arr;
