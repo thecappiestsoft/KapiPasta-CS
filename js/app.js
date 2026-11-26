@@ -34,16 +34,19 @@ const chName = ch => ch.name[S.theme];
 const projName = (ci, ch) => `${String(ci + 1).padStart(2, '0')}.${slug(ch.name.neutral || ch.name[S.theme])}`;
 
 /* ===== progress math ===== */
-/* lesson stars show how much is done: ★ from 1/3 of the tasks, ★★ from 2/3, ★★★ = 100%.
+/* lesson stars show how much is done, in half-stars = school grades 1–6:
+   ½★ = 1 (<30%), ★ = 2 (30%), ★½ = 3 (50%), ★★ = 4 (75%), ★★½ = 5 (90%), ★★★ = 6 (100%).
    The capybara in a mortarboard (perfect) = 100% and every task right at the first try. */
+const GRADE_MIN = [0, 0.3, 0.5, 0.75, 0.9, 1]; // lowest share of tasks for grades 1..6
 function starsFor(ts, done) {
   const n = ts.length, d = ts.filter(t => done[t.id] && done[t.id].ok).length, first = ts.filter(t => done[t.id] && done[t.id].ok && done[t.id].first).length;
-  const r = n ? d / n : 1; const stars = r >= 1 ? 3 : r >= 2 / 3 ? 2 : r >= 1 / 3 ? 1 : 0;
-  return { d, n, first, stars, perfect: n > 0 && d === n && first === n };
+  const r = n ? d / n : 1; let grade = 0; if (d) for (let g = 6; g >= 1; g--) if (r >= GRADE_MIN[g - 1] - 1e-9) { grade = g; break; }
+  return { d, n, first, grade, stars: grade / 2, perfect: n > 0 && d === n && first === n };
 }
 function lessonStars(L) { const ts = stageTasks(L); if (!ts.length) return null; const st = starsFor(ts, S.done); return st.d ? st : null; }
 const perfectIco = big => `<i class="cpy-grad ${big ? 'big' : ''}" title="${esc(tr('perfectTip'))}" aria-label="${esc(tr('perfectTip'))}"></i>`;
-function starsHtml(st, big) { const h = `${'★'.repeat(st.stars)}<i>${'☆'.repeat(3 - st.stars)}</i>${st.perfect ? perfectIco() : ''}`; return big ? h : `<span class="stars ${st.stars === 3 ? 'max' : ''}" title="${esc(tr('starsTip', { d: st.d, n: st.n, f: st.first }))}">${h}</span>`; }
+function starsHtml(st, big) { const h = starRow(st.grade) + (st.perfect ? perfectIco() : ''); return big ? h : `<span class="stars ${st.grade === 6 ? 'max' : ''}" title="${esc(tr('starsTip', { d: st.d, n: st.n, f: st.first, g: st.grade }))}">${h}</span>`; }
+function starRow(grade) { let h = ''; for (let i = 0; i < 3; i++) { const v = grade - 2 * i; h += v >= 2 ? '<b class="sf">★</b>' : v === 1 ? '<b class="sh">★</b>' : '<b class="se">★</b>'; } return h; }
 /* time spent on tasks: counted while the task is on screen and the tab is visible; one stretch counts at most 10 min */
 const TT = { id: null, since: 0 };
 const TT_CAP = 10 * 60 * 1000;
