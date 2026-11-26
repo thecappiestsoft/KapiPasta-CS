@@ -37,7 +37,8 @@ const projName = (ci, ch) => `${String(ci + 1).padStart(2, '0')}.${slug(ch.name.
 /* stars of a finished lesson: 3 = every task right at the first try, 2 = at least 60%, 1 = the rest */
 function starsFor(ts, done) { const first = ts.filter(t => done[t.id] && done[t.id].first).length; const r = ts.length ? first / ts.length : 1; return { first, n: ts.length, stars: r === 1 ? 3 : r >= .6 ? 2 : 1 }; }
 function lessonStars(L) { const ts = stageTasks(L); if (!ts.length || !ts.every(t => S.done[t.id] && S.done[t.id].ok)) return null; return starsFor(ts, S.done); }
-function starsHtml(st, big) { const h = `${'★'.repeat(st.stars)}<i>${'☆'.repeat(3 - st.stars)}</i>`; return big ? h : `<span class="stars ${st.stars === 3 ? 'max' : ''}" title="${esc(tr('starsTip', { f: st.first, n: st.n }))}">${h}</span>`; }
+const perfectIco = big => `<i class="cpy-grad ${big ? 'big' : ''}" title="${esc(tr('perfectTip'))}" aria-label="${esc(tr('perfectTip'))}"></i>`;
+function starsHtml(st, big) { const h = `${'★'.repeat(st.stars)}<i>${'☆'.repeat(3 - st.stars)}</i>${st.stars === 3 ? perfectIco() : ''}`; return big ? h : `<span class="stars ${st.stars === 3 ? 'max' : ''}" title="${esc(tr('starsTip', { f: st.first, n: st.n }))}">${h}</span>`; }
 /* time spent on tasks: counted while the task is on screen and the tab is visible; one stretch counts at most 10 min */
 const TT = { id: null, since: 0 };
 const TT_CAP = 10 * 60 * 1000;
@@ -511,7 +512,7 @@ function doneView(L) {
   const secs = ts.reduce((a, t) => a + taskSec(t.id), 0);
   const C = course(); let nxt = null;
   if (V.li + 1 < C[V.ci].lessons.length) nxt = [V.ci, V.li + 1]; else if (V.ci + 1 < C.length && unlocked(V.ci + 1)) nxt = [V.ci + 1, 0];
-  return `<div class="task" style="text-align:center">${capy({ size: 170, mood: 'wow' })}<h1>${tr('done')}</h1><div style="font-size:42px;letter-spacing:4px">${'⭐'.repeat(stars)}${'☆'.repeat(3 - stars)}</div>
+  return `<div class="task" style="text-align:center">${capy({ size: 170, mood: 'wow' })}<h1>${tr('done')}</h1><div style="font-size:42px;letter-spacing:4px">${'⭐'.repeat(stars)}${'☆'.repeat(3 - stars)}${stars === 3 ? perfectIco(true) : ''}</div>${stars === 3 ? `<p style="font-weight:700;margin:4px 0">🎓 ${tr('perfectTip')}</p>` : ''}
 <p class="muted">${tr('accuracy')}: ${first}/${ts.length} · ⏱ ${tr('timeSpent')}: ${fmtDur(secs)}</p>${stars < 3 ? `<p class="muted" style="font-size:13px">${tr('starsHow')}</p>` : ''}<div class="row-btns" style="justify-content:center">${nxt ? `<button class="btn pri" data-act="lesson" data-a="${nxt[0]}:${nxt[1]}">${tr('nextLesson')}</button>` : ''}<button class="btn" data-act="go" data-a="welcome">${tr('backMap')}</button><button class="btn ghost" data-act="gotask" data-a="0">${tr('again')}</button></div></div>`;
 }
 function finishLesson() {
