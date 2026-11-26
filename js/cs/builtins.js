@@ -199,6 +199,8 @@ P.getBuiltinStatic = function (tn, n, nd, fr, soft) {
     case 'long': if (n === 'MaxValue') return mk('long', 9223372036854775807n); if (n === 'MinValue') return mk('long', -9223372036854775808n); break;
     case 'short': if (n === 'MaxValue') return mk('short', 32767); if (n === 'MinValue') return mk('short', -32768); break;
     case 'byte': if (n === 'MaxValue') return mk('byte', 255); if (n === 'MinValue') return mk('byte', 0); break;
+    case 'sbyte': if (n === 'MaxValue') return mk('sbyte', 127); if (n === 'MinValue') return mk('sbyte', -128); break;
+    case 'ushort': if (n === 'MaxValue') return mk('ushort', 65535); if (n === 'MinValue') return mk('ushort', 0); break;
     case 'uint': if (n === 'MaxValue') return mk('uint', 4294967295); if (n === 'MinValue') return mk('uint', 0); break;
     case 'double': { const m = { MaxValue: Number.MAX_VALUE, MinValue: -Number.MAX_VALUE, Epsilon: 5e-324, PositiveInfinity: Infinity, NegativeInfinity: -Infinity, NaN: NaN, Pi: Math.PI }; if (n in m) return mk('double', m[n]); break; }
     case 'float': { const m = { MaxValue: 3.4028234663852886e38, MinValue: -3.4028234663852886e38, Epsilon: 1.401298464324817e-45, PositiveInfinity: Infinity, NegativeInfinity: -Infinity, NaN: NaN }; if (n in m) return mk('float', m[n]); break; }
